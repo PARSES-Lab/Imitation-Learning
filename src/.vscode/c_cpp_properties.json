@@ -1,0 +1,62 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/parses/ros2_ws/install/robotiq_driver/include/**",
+        "/home/parses/ros2_ws/install/serial/include/**",
+        "/home/parses/ros2_ws/install/robotiq_controllers/include/**",
+        "/home/parses/ws_moveit2/install/pilz_industrial_motion_planner_testutils/include/**",
+        "/home/parses/ws_moveit2/install/pilz_industrial_motion_planner/include/**",
+        "/home/parses/ws_moveit2/install/moveit_visual_tools/include/**",
+        "/home/parses/ws_moveit2/install/moveit_task_constructor_visualization/include/**",
+        "/home/parses/ws_moveit2/install/moveit_task_constructor_demo/include/**",
+        "/home/parses/ws_moveit2/install/moveit_task_constructor_core/include/**",
+        "/home/parses/ws_moveit2/install/moveit_ros_control_interface/include/**",
+        "/home/parses/ws_moveit2/install/moveit_simple_controller_manager/include/**",
+        "/home/parses/ws_moveit2/install/moveit_setup_assistant/include/**",
+        "/home/parses/ws_moveit2/install/moveit_setup_srdf_plugins/include/**",
+        "/home/parses/ws_moveit2/install/moveit_setup_core_plugins/include/**",
+        "/home/parses/ws_moveit2/install/moveit_setup_controllers/include/**",
+        "/home/parses/ws_moveit2/install/moveit_setup_app_plugins/include/**",
+        "/home/parses/ws_moveit2/install/moveit_setup_framework/include/**",
+        "/home/parses/ws_moveit2/install/moveit_servo/include/**",
+        "/home/parses/ws_moveit2/install/moveit_ros_visualization/include/**",
+        "/home/parses/ws_moveit2/install/moveit_py/include/**",
+        "/home/parses/ws_moveit2/install/moveit_hybrid_planning/include/**",
+        "/home/parses/ws_moveit2/install/moveit_ros_planning_interface/include/**",
+        "/home/parses/ws_moveit2/install/moveit_ros_benchmarks/include/**",
+        "/home/parses/ws_moveit2/install/moveit_ros_warehouse/include/**",
+        "/home/parses/ws_moveit2/install/moveit_ros_robot_interaction/include/**",
+        "/home/parses/ws_moveit2/install/moveit_ros_perception/include/**",
+        "/home/parses/ws_moveit2/install/moveit_ros_move_group/include/**",
+        "/home/parses/ws_moveit2/install/moveit_planners_ompl/include/**",
+        "/home/parses/ws_moveit2/install/moveit_ros_planning/include/**",
+        "/home/parses/ws_moveit2/install/moveit_ros_occupancy_map_monitor/include/**",
+        "/home/parses/ws_moveit2/install/moveit_kinematics/include/**",
+        "/home/parses/ws_moveit2/install/chomp_motion_planner/include/**",
+        "/home/parses/ws_moveit2/install/moveit_core/include/**",
+        "/home/parses/ws_moveit2/install/srdfdom/include/**",
+        "/home/parses/ws_moveit2/install/rviz_marker_tools/include/**",
+        "/home/parses/ws_moveit2/install/rosparam_shortcuts/include/**",
+        "/home/parses/ws_moveit2/install/moveit_task_constructor_msgs/include/**",
+        "/home/parses/ros2_ws/install/realsense2_camera_msgs/include/**",
+        "/opt/ros/humble/include/**",
+        "/home/parses/ros2_ws/src/ros2_robotiq_gripper/robotiq_controllers/include/**",
+        "/home/parses/ros2_ws/src/ros2_robotiq_gripper/robotiq_driver/include/**",
+        "/home/parses/ros2_ws/src/serial-ros2/include/**",
+        "/home/parses/ros2_ws/src/ur3e_control/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}
