@@ -44,6 +44,11 @@ int main(int argc, char** argv)
 
   RCLCPP_INFO(move_group_node->get_logger(), "Visualizing plan 1 (pose goal) %s", success ? "" : "FAILED");
 
+  if (success)
+    move_group.execute(my_plan);
+  else
+    RCLCPP_WARN(move_group_node->get_logger(), "Plan failed, not executing.");
+
   move_group.execute(my_plan);
   rclcpp::shutdown();
   spinner.join();
