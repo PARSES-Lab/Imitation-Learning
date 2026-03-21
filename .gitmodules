@@ -1,0 +1,3 @@
+[submodule "src/ur3_control"]
+	path = src/ur3_control
+	url = git@github.com:lagenuina/ur3_control.git
