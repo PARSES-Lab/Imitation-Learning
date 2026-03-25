@@ -40,7 +40,7 @@ class JointRecorder(Node):
         self.gripper_events = []
         self.start_time = None
         self.message_count = 0
-        self.downsample_rate = 100  # ~5Hz at 500Hz joint state publish rate
+        self.downsample_rate = 1  # factor to reduce joint message sampling by
         self.gripper_was_closed = False  # track previous state to detect transitions
 
         self.subscription = self.create_subscription(
