@@ -51,7 +51,7 @@ class Gripper(Enum):
     OPEN  = auto()
     CLOSE = auto()
 
-PICK_AND_PLACE = [
+GRASP = [
     {"label": "Approach object",
      "act": "arm",
      "x": -0.0, "y": 0.4, "z": 0.40,
@@ -65,22 +65,7 @@ PICK_AND_PLACE = [
     {"label": "Lift up",
      "act": "arm",
      "x": -0.3, "y": 0.0, "z": 0.40,
-     "qx": 0.768, "qy": 0.641, "qz": -0.015, "qw": -0.009},
-
-    {"label": "Move to goal",
-     "act": "arm",
-     "x": -0.3, "y": 0.2, "z": 0.40,
-     "qx": 0.768, "qy": 0.641, "qz": -0.015, "qw": -0.009},
-
-    {"label": "Lower to place",
-     "act": "arm",
-     "x": -0.3, "y": 0.2, "z": 0.22,
-     "qx": 0.768, "qy": 0.641, "qz": -0.015, "qw": -0.009},
-
-    {"label": "Retract arm",
-     "act": "arm",
-     "x": -0.3, "y": 0.2, "z": 0.40,
-     "qx": 0.768, "qy": 0.641, "qz": -0.015, "qw": -0.009},
+     "qx": 0.768, "qy": 0.641, "qz": -0.015, "qw": -0.009}
 ]
 
 # Goal positions defined as offsets relative to current EEF position.
@@ -286,7 +271,7 @@ def main():
     node.add_obstacle("wall",  size=[0.02, 2.00, 2.0], position=[0.15, 0.0, 0.0])
 
     node.move_to_home()
-    node.run(PICK_AND_PLACE)
+    # node.run(GRASP)
 
     node.destroy_node()
     rclpy.shutdown()

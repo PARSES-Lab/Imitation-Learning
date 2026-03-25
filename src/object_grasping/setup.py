@@ -24,7 +24,9 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'object_grasping_node = object_grasping.object_grasping_node:main'
+            'object_grasping_node = object_grasping.object_grasping_node:main',
+            'record_joints_node = object_grasping.record_joints:main',
+            'replay_joints_node = object_grasping.replay_joints:main'
         ],
     },
 )
