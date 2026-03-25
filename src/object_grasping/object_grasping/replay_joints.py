@@ -5,7 +5,7 @@ Also replays gripper open/close events at the correct timestamps.
 
 Usage:
     python3 replay_joints.py --input demo.json
-    python3 replay_joints.py --input demo.json --speed 0.5   # half speed
+    python3 replay_joints.py --input demo.json --speed 2.0   # double speed
 """
 
 import rclpy
@@ -28,7 +28,7 @@ class JointReplayer(Node):
     def __init__(self, input_file, speed_factor):
         super().__init__('joint_replayer')
         self.input_file = input_file
-        self.speed_factor = speed_factor
+        self.speed_factor = speed_factor  # 1.0 = same speed, 2.0 = twice as fast
 
         self._action_client = ActionClient(
             self,
@@ -38,6 +38,9 @@ class JointReplayer(Node):
 
         self.gripper_close_client = self.create_client(Trigger, '/gripper/close')
         self.gripper_open_client = self.create_client(Trigger, '/gripper/open')
+
+        # Event that fires when trajectory is accepted and robot starts moving
+        self.trajectory_started = threading.Event()
 
     def load(self):
         with open(self.input_file, 'r') as f:
@@ -55,13 +58,23 @@ class JointReplayer(Node):
         traj = JointTrajectory()
         traj.joint_names = data['joint_names']
 
+        last_ns = -1
+
         for point_data in data['trajectory']:
             point = JointTrajectoryPoint()
             point.positions = point_data['positions']
 
+            # speed_factor > 1 = faster, < 1 = slower
             scaled_time = point_data['time'] / self.speed_factor
-            secs = int(scaled_time)
-            nanosecs = int((scaled_time - secs) * 1e9)
+            total_ns = int(scaled_time * 1e9)
+
+            # Enforce strictly increasing timestamps
+            if total_ns <= last_ns:
+                total_ns = last_ns + 1_000_000  # bump by 1ms
+            last_ns = total_ns
+
+            secs = total_ns // 1_000_000_000
+            nanosecs = total_ns % 1_000_000_000
             point.time_from_start = Duration(sec=secs, nanosec=nanosecs)
 
             traj.points.append(point)
@@ -69,13 +82,8 @@ class JointReplayer(Node):
         return traj
 
     def call_gripper(self, action):
-        """Call the appropriate gripper service."""
-        if action == 'close':
-            client = self.gripper_close_client
-            service = '/gripper/close'
-        else:
-            client = self.gripper_open_client
-            service = '/gripper/open'
+        client = self.gripper_close_client if action == 'close' else self.gripper_open_client
+        service = f'/gripper/{action}'
 
         if client.wait_for_service(timeout_sec=1.0):
             future = client.call_async(Trigger.Request())
@@ -85,28 +93,32 @@ class JointReplayer(Node):
             else:
                 self.get_logger().warn(f'Gripper {action} failed')
         else:
-            self.get_logger().error(f'{service} service not available')
+            self.get_logger().error(f'{service} not available')
 
     def replay_gripper_events(self, gripper_events):
-        """Replay gripper events at the correct times in a background thread."""
+        """Wait for trajectory to be accepted, then replay gripper events."""
         if not gripper_events:
             return None
 
         def run():
-            start = self.get_clock().now().nanoseconds
+            # Wait until trajectory is accepted and robot starts moving
+            self.get_logger().info('Gripper thread waiting for trajectory to start...')
+            self.trajectory_started.wait()
+            start = time.monotonic()
+            self.get_logger().info('Gripper thread started.')
 
             for event in gripper_events:
                 target_time = event['time'] / self.speed_factor
 
-                # Wait until the right time
                 while True:
-                    elapsed = (self.get_clock().now().nanoseconds - start) / 1e9
+                    elapsed = time.monotonic() - start
                     if elapsed >= target_time:
                         break
                     time.sleep(0.005)
 
                 self.get_logger().info(
-                    f'Replaying gripper {event["action"]} at t={elapsed:.3f}s')
+                    f'Replaying gripper {event["action"]} at t={elapsed:.3f}s '
+                    f'(recorded at t={event["time"]:.3f}s)')
                 self.call_gripper(event['action'])
 
         thread = threading.Thread(target=run, daemon=True)
@@ -126,10 +138,11 @@ class JointReplayer(Node):
 
         self.get_logger().info(
             f'Sending trajectory ({len(traj.points)} points, '
-            f'{traj.points[-1].time_from_start.sec}s at {self.speed_factor}x speed)...'
+            f'duration={traj.points[-1].time_from_start.sec}s '
+            f'at {self.speed_factor}x speed)...'
         )
 
-        # Start gripper thread before sending trajectory so timing is aligned
+        # Start gripper thread now — it will block until trajectory is accepted
         self.replay_gripper_events(gripper_events)
 
         send_goal_future = self._action_client.send_goal_async(goal)
@@ -143,7 +156,10 @@ class JointReplayer(Node):
             rclpy.shutdown()
             return
 
+        # Signal gripper thread to start timing now
+        self.trajectory_started.set()
         self.get_logger().info('Trajectory accepted, executing...')
+
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(self.result_callback)
 
@@ -169,7 +185,7 @@ def main():
         '--speed', '-s',
         type=float,
         default=1.0,
-        help='Speed factor (1.0 = same speed, 0.5 = half speed, 2.0 = double speed)'
+        help='Speed factor (1.0 = same speed, 2.0 = twice as fast, 0.5 = half speed)'
     )
     args = parser.parse_args()
 
