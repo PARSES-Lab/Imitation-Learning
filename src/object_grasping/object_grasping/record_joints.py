@@ -40,7 +40,7 @@ class JointRecorder(Node):
         self.gripper_events = []
         self.start_time = None
         self.message_count = 0
-        self.downsample_rate = 1  # factor to reduce joint message sampling by
+        self.downsample_rate = 1  # ~5Hz at 500Hz joint state publish rate
         self.gripper_was_closed = False  # track previous state to detect transitions
 
         self.subscription = self.create_subscription(
@@ -65,24 +65,27 @@ class JointRecorder(Node):
         if self.message_count % self.downsample_rate != 0:
             return
 
-        # Use message timestamp instead of system clock
-        msg_time_ns = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
-
         if self.start_time is None:
-            self.start_time = msg_time_ns
+            self.start_time = self.get_clock().now().nanoseconds
 
-        elapsed = (msg_time_ns - self.start_time) / 1e9
+        elapsed = (self.get_clock().now().nanoseconds - self.start_time) / 1e9
 
-        filtered = {
-            name: pos
-            for name, pos in zip(msg.name, msg.position)
-            if name in UR_JOINTS
-        }
+        name_to_pos = dict(zip(msg.name, msg.position))
+
+        # FIX 5: guard against messages that don't yet contain all UR joints
+        # (common during startup) instead of crashing with a KeyError.
+        missing = [j for j in UR_JOINTS if j not in name_to_pos]
+        if missing:
+            self.get_logger().warn(
+                f'Skipping frame — joints not yet in /joint_states: {missing}',
+                throttle_duration_sec=5.0
+            )
+            return
 
         self.recording.append({
             'time': elapsed,
             'joint_names': UR_JOINTS,
-            'positions': [filtered[j] for j in UR_JOINTS],
+            'positions': [name_to_pos[j] for j in UR_JOINTS],
         })
 
     def gripper_status_callback(self, msg):
@@ -110,13 +113,6 @@ class JointRecorder(Node):
         if not self.recording:
             self.get_logger().warn('No data recorded.')
             return
-        
-        # Sort by time and remove any duplicate timestamps
-        sorted_traj = sorted(self.recording, key=lambda p: p['time'])
-        deduped_traj = [sorted_traj[0]]
-        for point in sorted_traj[1:]:
-            if point['time'] > deduped_traj[-1]['time']:
-                deduped_traj.append(point)
 
         data = {
             'recorded_at': datetime.now().isoformat(),
