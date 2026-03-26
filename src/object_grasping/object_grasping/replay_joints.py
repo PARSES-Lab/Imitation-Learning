@@ -14,9 +14,8 @@ import argparse
 
 from rosidl_runtime_py import set_message_fields
 
-
 ACTION_SERVER = '/scaled_joint_trajectory_controller/follow_joint_trajectory'
-POSITION_THRESHOLD = 0.05
+POSITION_THRESHOLD = 0.05  # still used if you want position monitoring
 
 
 class JointReplayer(Node):
@@ -34,9 +33,8 @@ class JointReplayer(Node):
         self.gripper_close_client = self.create_client(Trigger, '/gripper/close')
         self.gripper_open_client = self.create_client(Trigger, '/gripper/open')
 
+        self.start_time = None
         self.pending_triggers = []
-        self.joint_monitor_sub = None
-        self.joint_names = []
 
     def load(self):
         with open(self.input_file, 'r') as f:
@@ -52,33 +50,16 @@ class JointReplayer(Node):
         future = client.call_async(Trigger.Request())
         future.add_done_callback(lambda f: self.get_logger().info(f'Gripper {action} done'))
 
-    def joint_state_callback(self, msg):
-        if not self.pending_triggers:
+    def gripper_timer_callback(self):
+        if not self.pending_triggers or self.start_time is None:
             return
 
-        current = dict(zip(msg.name, msg.position))
-        trigger = self.pending_triggers[0]
+        elapsed = (self.get_clock().now() - self.start_time).nanoseconds / 1e9
 
-        errors = [
-            abs(current[n] - trigger['positions'][n])
-            for n in self.joint_names
-            if n in current
-        ]
-
-        if errors and max(errors) < POSITION_THRESHOLD:
-            self.call_gripper(trigger['action'])
-            self.pending_triggers.pop(0)
-
-            if not self.pending_triggers:
-                self.destroy_subscription(self.joint_monitor_sub)
-
-    def start_joint_monitor(self):
-        self.joint_monitor_sub = self.create_subscription(
-            JointState,
-            '/joint_states',
-            self.joint_state_callback,
-            10
-        )
+        # Trigger all events whose time has passed
+        while self.pending_triggers and elapsed >= self.pending_triggers[0]['time']:
+            event = self.pending_triggers.pop(0)
+            self.call_gripper(event['action'])
 
     def replay(self):
         data = self.load()
@@ -86,36 +67,20 @@ class JointReplayer(Node):
         traj = JointTrajectory()
         set_message_fields(traj, data['trajectory'])
 
-        self.joint_names = traj.joint_names
+        # Convert gripper_events into a sorted list by time
+        self.pending_triggers = sorted(data.get('gripper_events', []), key=lambda e: e['time'])
 
-        # Build triggers from closest trajectory point
-        for event in data.get('gripper_events', []):
-            idx = min(
-                range(len(traj.points)),
-                key=lambda i: abs(
-                    traj.points[i].time_from_start.sec +
-                    traj.points[i].time_from_start.nanosec * 1e-9
-                    - event['time']
-                )
-            )
-
-            positions = dict(zip(
-                self.joint_names,
-                traj.points[idx].positions
-            ))
-
-            self.pending_triggers.append({
-                'positions': positions,
-                'action': event['action']
-            })
-
+        # Wait for action server
         self._action_client.wait_for_server()
 
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = traj
-
         send_goal_future = self._action_client.send_goal_async(goal)
         send_goal_future.add_done_callback(self.goal_response_callback)
+
+        # Start timer to trigger gripper events by time
+        self.start_time = self.get_clock().now()
+        self.create_timer(0.01, self.gripper_timer_callback)  # check every 10ms
 
     def goal_response_callback(self, future):
         goal_handle = future.result()
@@ -124,9 +89,6 @@ class JointReplayer(Node):
             self.get_logger().error('Trajectory rejected')
             rclpy.shutdown()
             return
-
-        if self.pending_triggers:
-            self.start_joint_monitor()
 
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(lambda f: rclpy.shutdown())
