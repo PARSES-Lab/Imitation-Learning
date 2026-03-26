@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
-"""
-Record joint positions from /joint_states until Ctrl-C.
-Also monitors /gripper/status and records open/close transition timestamps.
-Gripper is considered closed when data[1] > 3.
-
-Usage:
-    python3 record_joints.py
-    python3 record_joints.py --output my_demo.json
-"""
 
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Int32MultiArray
-import json
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from builtin_interfaces.msg import Duration
+
+import yaml
 import argparse
 import signal
 import sys
 from datetime import datetime
+
+from rosidl_runtime_py import message_to_yaml
 
 
 UR_JOINTS = [
@@ -35,13 +31,17 @@ GRIPPER_CLOSED_THRESHOLD = 3
 class JointRecorder(Node):
     def __init__(self, output_file):
         super().__init__('joint_recorder')
+
         self.output_file = output_file
-        self.recording = []
-        self.gripper_events = []
         self.start_time = None
         self.message_count = 0
-        self.downsample_rate = 1  # no downsampling by default
-        self.gripper_was_closed = False  # track previous state to detect transitions
+        self.downsample_rate = 1
+
+        self.trajectory = JointTrajectory()
+        self.trajectory.joint_names = UR_JOINTS
+
+        self.gripper_events = []
+        self.gripper_was_closed = False
 
         self.subscription = self.create_subscription(
             JointState,
@@ -57,8 +57,7 @@ class JointRecorder(Node):
             10
         )
 
-        self.get_logger().info('Recording joint states and gripper status...')
-        self.get_logger().info('Press Ctrl-C to stop.')
+        self.get_logger().info('Recording... Ctrl-C to stop.')
 
     def joint_state_callback(self, msg):
         self.message_count += 1
@@ -72,90 +71,74 @@ class JointRecorder(Node):
 
         name_to_pos = dict(zip(msg.name, msg.position))
 
-        # FIX 5: guard against messages that don't yet contain all UR joints
-        # (common during startup) instead of crashing with a KeyError.
-        missing = [j for j in UR_JOINTS if j not in name_to_pos]
-        if missing:
-            self.get_logger().warn(
-                f'Skipping frame — joints not yet in /joint_states: {missing}',
-                throttle_duration_sec=5.0
-            )
+        if any(j not in name_to_pos for j in UR_JOINTS):
             return
 
-        self.recording.append({
-            'time': elapsed,
-            'joint_names': UR_JOINTS,
-            'positions': [name_to_pos[j] for j in UR_JOINTS],
-        })
+        point = JointTrajectoryPoint()
+        point.positions = [name_to_pos[j] for j in UR_JOINTS]
+
+        total_ns = int(elapsed * 1e9)
+        point.time_from_start = Duration(
+            sec=total_ns // 1_000_000_000,
+            nanosec=total_ns % 1_000_000_000
+        )
+
+        self.trajectory.points.append(point)
 
     def gripper_status_callback(self, msg):
-        if len(msg.data) < 2:
+        if len(msg.data) < 2 or self.start_time is None:
             return
-
-        if self.start_time is None:
-            return  # don't record gripper events before joint recording starts
 
         is_closed = msg.data[1] > GRIPPER_CLOSED_THRESHOLD
         elapsed = (self.get_clock().now().nanoseconds - self.start_time) / 1e9
 
-        # Only record on state transitions, not every message
         if is_closed and not self.gripper_was_closed:
             self.gripper_events.append({'time': elapsed, 'action': 'close'})
-            self.get_logger().info(f'Gripper closed at t={elapsed:.3f}s')
+            self.get_logger().info(f'Gripper closed at {elapsed:.3f}s')
 
         elif not is_closed and self.gripper_was_closed:
             self.gripper_events.append({'time': elapsed, 'action': 'open'})
-            self.get_logger().info(f'Gripper opened at t={elapsed:.3f}s')
+            self.get_logger().info(f'Gripper opened at {elapsed:.3f}s')
 
         self.gripper_was_closed = is_closed
 
     def save(self):
-        if not self.recording:
-            self.get_logger().warn('No data recorded.')
+        if not self.trajectory.points:
+            print('No data recorded.')
             return
 
         data = {
             'recorded_at': datetime.now().isoformat(),
-            'num_points': len(self.recording),
-            'duration': self.recording[-1]['time'],
-            'joint_names': UR_JOINTS,
-            'gripper_events': self.gripper_events,
-            'trajectory': self.recording,
+            'trajectory': yaml.safe_load(message_to_yaml(self.trajectory)),
+            'gripper_events': self.gripper_events
         }
 
         with open(self.output_file, 'w') as f:
-            json.dump(data, f, indent=2)
+            yaml.dump(data, f)
 
-        self.get_logger().info(
-            f'Saved {len(self.recording)} points '
-            f'({self.recording[-1]["time"]:.2f}s), '
-            f'{len(self.gripper_events)} gripper event(s) '
+        print(
+            f'Saved {len(self.trajectory.points)} points '
+            f'and {len(self.gripper_events)} gripper events '
             f'to {self.output_file}'
         )
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--output', '-o',
-        default=f'demo_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json',
-        help='Output JSON file path'
-    )
+    parser.add_argument('--output', '-o', default='demo.yaml')
     args = parser.parse_args()
 
     rclpy.init()
     recorder = JointRecorder(args.output)
 
-    def shutdown(sig, frame):
-        recorder.get_logger().info('Stopping recording...')
+    try:
+        rclpy.spin(recorder)
+    except KeyboardInterrupt:
+        print('Ctrl-C received, saving...')
+    finally:
         recorder.save()
         recorder.destroy_node()
         rclpy.shutdown()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, shutdown)
-
-    rclpy.spin(recorder)
 
 
 if __name__ == '__main__':
