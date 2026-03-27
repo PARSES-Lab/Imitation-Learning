@@ -14,3 +14,9 @@ ros2 launch ur_moveit_config ur_moveit.launch.py ur_type:=ur3e launch_rviz:=true
 ros2 launch ur_robot_driver ur_control.launch.py     ur_type:=ur3e     robot_ip:=192.168.0.113     use_mock_hardware:=true     launch_rviz:=false
 
 ros2 launch ur_moveit_config ur_moveit.launch.py ur_type:=ur3e launch_rviz:=true
+
+
+## To enable freedrive mode:
+ros2 control set_controller_state scaled_joint_trajectory_controller inactive
+ros2 control set_controller_state freedrive_mode_controller active
+ros2 topic pub --rate 2 /freedrive_mode_controller/enable_freedrive_mode std_msgs/msg/Bool "{data: true}"
