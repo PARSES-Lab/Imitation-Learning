@@ -20,3 +20,13 @@ ros2 launch ur_moveit_config ur_moveit.launch.py ur_type:=ur3e launch_rviz:=true
 ros2 control set_controller_state scaled_joint_trajectory_controller inactive
 ros2 control set_controller_state freedrive_mode_controller active
 ros2 topic pub --rate 2 /freedrive_mode_controller/enable_freedrive_mode std_msgs/msg/Bool "{data: true}"
+
+
+## For camera:
+realsense-viewer
+ros2 run realsense2_camera realsense2_camera_node 
+
+## For recording arm+gripper:
+ros2 run object_grasping record_joints_node --output my_demo.json
+ros2 run object_grasping replay_joints_node --input my_demo.json
+
