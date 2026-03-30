@@ -2,3 +2,6 @@ build
 log
 install
 pymoveit2
+first_pkg
+ur3_control
+ur3e_control
