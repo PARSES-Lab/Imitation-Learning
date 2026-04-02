@@ -16,6 +16,13 @@ ros2 launch ur_robot_driver ur_control.launch.py     ur_type:=ur3e     robot_ip:
 ros2 launch ur_moveit_config ur_moveit.launch.py ur_type:=ur3e launch_rviz:=true
 
 
+
+
+## Launch file for arm and camera:
+ros2 launch object_grasping demo_setup.launch.py 
+
+
+
 ## To enable freedrive mode:
 ros2 control set_controller_state scaled_joint_trajectory_controller inactive
 ros2 control set_controller_state freedrive_mode_controller active

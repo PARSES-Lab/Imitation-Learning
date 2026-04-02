@@ -19,10 +19,11 @@ POSITION_THRESHOLD = 0.05  # still used if you want position monitoring
 
 
 class JointReplayer(Node):
-    def __init__(self, input_file):
+    def __init__(self, input_file, gripper_time_shift):
         super().__init__('joint_replayer')
 
         self.input_file = input_file
+        self.gripper_time_shift = gripper_time_shift
 
         self._action_client = ActionClient(
             self,
@@ -57,7 +58,7 @@ class JointReplayer(Node):
         elapsed = (self.get_clock().now() - self.start_time).nanoseconds / 1e9
 
         # Trigger all events whose time has passed
-        while self.pending_triggers and elapsed >= self.pending_triggers[0]['time']:
+        while self.pending_triggers and elapsed >= self.pending_triggers[0]['time'] + self.gripper_time_shift:
             event = self.pending_triggers.pop(0)
             self.call_gripper(event['action'])
 
@@ -97,10 +98,11 @@ class JointReplayer(Node):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input', '-i', required=True)
+    parser.add_argument('--gripper_time_shift', '-g', type=float, default=0.0)
     args = parser.parse_args()
 
     rclpy.init()
-    node = JointReplayer(args.input)
+    node = JointReplayer(args.input, float(args.gripper_time_shift))
     node.replay()
     rclpy.spin(node)
 
