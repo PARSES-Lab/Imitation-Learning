@@ -5,10 +5,10 @@ import torchvision.models as models
 import torch.nn.functional as F
 
 class PolicyNetwork(nn.Module):
-    def __init__(self, n_poses, hidden_dim):
+    def __init__(self, n_history, hidden_dim):
         super().__init__()
 
-        self.n_poses = n_poses
+        self.n_history = n_history
         self.hidden_dim = hidden_dim
 
         ## Resnet18 encoder
@@ -33,7 +33,7 @@ class PolicyNetwork(nn.Module):
 
         ## Feedforward layers
         encoder_output_dim = 512 * 2
-        ff_input_dim = encoder_output_dim + self.n_poses * 7
+        ff_input_dim = encoder_output_dim + self.n_history * 8
 
         self.feedforward = nn.Sequential(
             nn.Linear(ff_input_dim, hidden_dim),
@@ -96,7 +96,7 @@ class PolicyNetworkLoss(nn.Module):
         q_pred = F.normalize(q_pred, dim=-1)
         q_target = F.normalize(q_target, dim=-1)
 
-        dot = torch.abs(torch.sum(q_pred * q_target, dim=-1))
+        dot = torch.abs(torch.sum(q_pred * q_target, dim=-1)).clamp(0.0 + 1e-7, 1.0 - 1e-7)
         return (2 * torch.acos(dot)).mean()
     
 
@@ -105,7 +105,7 @@ if __name__ == '__main__':
     loss_fn = PolicyNetworkLoss()
 
     images = torch.randn(5, 3, 224, 224)
-    pose_history = torch.randn(5, 5, 7)
+    pose_history = torch.randn(5, 5, 8)
     preds = model(images, pose_history)
     print(preds)
 
