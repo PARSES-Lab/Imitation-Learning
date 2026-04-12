@@ -57,6 +57,8 @@ def precompute_index_chain(df: pd.DataFrame, n_history: int) -> list[dict]:
         if t != -1 and t not in seen:
             target_chain.append(t)
             seen.add(t)
+    
+    print(f"Found {len(target_chain)} target indexes")
 
     # Build a lookup: row index -> position in target_chain
     chain_position = {target: idx for idx, target in enumerate(target_chain)}
