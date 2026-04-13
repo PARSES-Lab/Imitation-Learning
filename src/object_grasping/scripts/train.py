@@ -30,6 +30,11 @@ class SingleDemoDataset(Dataset):
 
         self.augmentation = v2.Compose([
             v2.ToDtype(torch.float32, scale=True),
+            v2.RandomResizedCrop(
+                size=(224, 224),
+                scale=(0.9, 1.0),   # crop between 90% and 100% of the image area
+                ratio=(0.9, 1.1),   # keep roughly square
+            ),
             v2.RandomAffine(
                 degrees=3,
                 translate=(0.03, 0.03),

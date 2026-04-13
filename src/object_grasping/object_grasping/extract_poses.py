@@ -3,7 +3,6 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from tf2_ros import Buffer, TransformListener
 import csv
-import argparse
 
 class PoseExtractor(Node):
     def __init__(self):
