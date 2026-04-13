@@ -1,0 +1,7 @@
+demos:
+  - dataset_csv: '/home/joeya/dataset/demo1/dataset.csv'
+    targets_csv: '/home/joeya/dataset/demo1/targets.csv'
+    image_dir: '/home/joeya/dataset/demo1'
+  - dataset_csv: '/home/joeya/dataset/demo2/dataset.csv'
+    targets_csv: '/home/joeya/dataset/demo2/targets.csv'
+    image_dir: '/home/joeya/dataset/demo2'

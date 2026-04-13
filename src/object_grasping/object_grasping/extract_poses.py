@@ -34,7 +34,6 @@ class PoseExtractor(Node):
 def main():
     rclpy.init()
     node = PoseExtractor()
-    rclpy.spin(node)
     rclpy.shutdown()
 
 if __name__ == '__main__':

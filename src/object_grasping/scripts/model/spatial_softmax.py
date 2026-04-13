@@ -33,12 +33,14 @@ class SpatialSoftArgmax(nn.Module):
                 torch.meshgrid(
                     torch.linspace(-1, 1, w, device=device),
                     torch.linspace(-1, 1, h, device=device),
+                    indexing='ij'
                 )
             )
         return torch.stack(
             torch.meshgrid(
                 torch.arange(0, w, device=device),
                 torch.arange(0, h, device=device),
+                indexing='ij'
             )
         )
 
