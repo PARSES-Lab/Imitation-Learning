@@ -2,7 +2,7 @@ import torch
 from torchvision.transforms import v2
 from model.model import PolicyNetwork, PolicyNetworkLoss
 from PIL import Image
-from torch.utils.data import Dataset, DataLoader, ConcatDataset
+from torch.utils.data import Dataset, DataLoader, ConcatDataset, random_split
 import pandas as pd
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -32,7 +32,7 @@ class SingleDemoDataset(Dataset):
             v2.ToDtype(torch.float32, scale=True),
             v2.RandomResizedCrop(
                 size=(224, 224),
-                scale=(0.9, 1.0),   # crop between 90% and 100% of the image area
+                scale=(0.95, 1.0),   # crop between 95% and 100% of the image area
                 ratio=(0.9, 1.1),   # keep roughly square
             ),
             v2.RandomAffine(
@@ -123,7 +123,7 @@ def train(
         config_path,
         n_history = 5,
         hidden_dim = 512,
-        epochs = 50,
+        epochs = 10,
         batch_size = 64,
         lr = 1e-3
 ):
@@ -131,7 +131,10 @@ def train(
     print(f'Using {device}')
 
     dataset = load_dataset_from_yaml(config_path, n_history)
-    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
+
+    training_set, validation_set = random_split(dataset, [0.9, 0.1])
+    train_loader = DataLoader(training_set, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
+    validation_loader = DataLoader(validation_set, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
 
     model = PolicyNetwork(n_history=n_history, hidden_dim=hidden_dim).to(device)
     loss_fn = PolicyNetworkLoss().to(device)
@@ -158,8 +161,48 @@ def train(
             optimizer.step()
 
             train_losses.append(losses['total'].item())
-        
         print(f'Epoch {epoch}: Loss is {np.mean(train_losses)}')
+    
+    ## Final training loss
+    model.eval()
+    final_training_losses = []
+
+    with torch.no_grad():
+        for batch in train_loader:
+            image = batch['image'].to(device)
+            history = batch['history'].to(device)
+            target = {
+                'delta_position': batch['delta_position'].to(device),
+                'delta_orientation': batch['delta_orientation'].to(device),
+                'gripper_state': batch['gripper_state'].to(device)
+            }
+            preds = model(image, history)
+            losses = loss_fn(preds, target)
+            final_training_losses.append(losses['total'].item())
+        
+    final_training_loss = np.mean(final_training_losses)
+    print(f"Final training loss: {final_training_loss}")
+
+
+    ## Validation loop
+    model.eval()
+    val_losses = []
+
+    with torch.no_grad():
+        for batch in validation_loader:
+            image = batch['image'].to(device)
+            history = batch['history'].to(device)
+            target = {
+                'delta_position': batch['delta_position'].to(device),
+                'delta_orientation': batch['delta_orientation'].to(device),
+                'gripper_state': batch['gripper_state'].to(device)
+            }
+            preds = model(image, history)
+            losses = loss_fn(preds, target)
+            val_losses.append(losses['total'].item())
+        
+    validation_loss = np.mean(val_losses)
+    print(f"Validation loss: {validation_loss}")
 
 
 if __name__ == '__main__':
