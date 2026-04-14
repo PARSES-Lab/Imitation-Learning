@@ -8,7 +8,7 @@ from torchvision.transforms import v2
 # -----------------------
 # CONFIG
 # -----------------------
-DIR = "/home/joeya/dataset/demo1"
+DIR = "/home/joeya/dataset/demo20"
 
 # -----------------------
 # TRANSFORM: PIL -> uint8 tensor (C, H, W)

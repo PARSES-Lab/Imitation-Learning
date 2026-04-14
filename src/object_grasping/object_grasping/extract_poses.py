@@ -17,7 +17,7 @@ class PoseExtractor(Node):
     def callback(self, msg: JointState):
         try:
             tf = self.tf_buffer.lookup_transform(
-                'base', 'ee_link',
+                'base_link', 'tool0',
                 rclpy.time.Time()
             )
         except Exception as e:
@@ -33,6 +33,7 @@ class PoseExtractor(Node):
 def main():
     rclpy.init()
     node = PoseExtractor()
+    rclpy.spin(node)
     rclpy.shutdown()
 
 if __name__ == '__main__':

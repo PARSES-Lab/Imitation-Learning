@@ -92,7 +92,7 @@ def find_history_indices(df: pd.DataFrame, i: int,
 
 
 def precompute_samples(df: pd.DataFrame, n_history: int,
-                       spacing_seconds: float = 0.1) -> list[dict]:
+                       spacing_seconds: float = 0.2) -> list[dict]:
     targets = [find_target_index(df, i) for i in range(len(df))]
 
     samples = []
@@ -110,25 +110,25 @@ def precompute_samples(df: pd.DataFrame, n_history: int,
 
 
 if __name__ == '__main__':
-    n_history = 5
-    demo_num    = 1
-    poses_csv   = f'/home/joeya/dataset/demo{demo_num}/poses.csv'
-    dataset_csv = f'/home/joeya/dataset/demo{demo_num}/dataset.csv'
-    image_dir   = f'/home/joeya/dataset/demo{demo_num}'
-    yaml_path   = (f'/mnt/c/Users/joeya/Imitation Learning Demos/'
-                   f'trajectory_recordings/demo{demo_num}.json')
-    targets_csv = f'/home/joeya/dataset/demo{demo_num}/targets.csv'
+        n_history = 5
+        demo_num    = 1
+        poses_csv   = f'/home/joeya/dataset/demo{demo_num}/poses.csv'
+        dataset_csv = f'/home/joeya/dataset/demo{demo_num}/dataset.csv'
+        image_dir   = f'/home/joeya/dataset/demo{demo_num}'
+        yaml_path   = (f'/mnt/c/Users/joeya/Imitation Learning Demos/'
+                    f'trajectory_recordings/demo{demo_num}.json')
+        targets_csv = f'/home/joeya/dataset/demo{demo_num}/targets.csv'
 
-    pair_images_and_poses(image_dir, poses_csv, dataset_csv)
-    add_gripper_column(csv_path=dataset_csv, yaml_path=yaml_path,
-                       lookahead_seconds=2.0)
+        pair_images_and_poses(image_dir, poses_csv, dataset_csv)
+        add_gripper_column(csv_path=dataset_csv, yaml_path=yaml_path,
+                        lookahead_seconds=2.0)
 
-    df = pd.read_csv(dataset_csv)
-    samples = precompute_samples(df, n_history=n_history)
-    samples_df = pd.DataFrame([{
-        'current_idx': s['current_idx'],
-        'target_idx':  s['target_idx'],
-        **{f'history_{j}': s[f'history_{j}'] for j in range(n_history)},
-    } for s in samples])
-    samples_df.to_csv(targets_csv, index=False)
-    print(f'Saved final dataset with {len(samples_df)} rows')
+        df = pd.read_csv(dataset_csv)
+        samples = precompute_samples(df, n_history=n_history)
+        samples_df = pd.DataFrame([{
+            'current_idx': s['current_idx'],
+            'target_idx':  s['target_idx'],
+            **{f'history_{j}': s[f'history_{j}'] for j in range(n_history)},
+        } for s in samples])
+        samples_df.to_csv(targets_csv, index=False)
+        print(f'Saved final dataset with {len(samples_df)} rows')
