@@ -123,7 +123,7 @@ def train(
         config_path,
         n_history = 5,
         hidden_dim = 512,
-        epochs = 10,
+        epochs = 30,
         batch_size = 64,
         lr = 1e-3
 ):
@@ -204,10 +204,12 @@ def train(
     validation_loss = np.mean(val_losses)
     print(f"Validation loss: {validation_loss}")
 
+    torch.save(model.state_dict(), 'Graspingv1.pth')
+
 
 if __name__ == '__main__':
     train(
-        config_path='/home/joeya/Imitation-Learning/src/object_grasping/scripts/dataset_config.yaml'
+        config_path='/home/joeya/Imitation-Learning/src/object_grasping/dataset_config.yaml'
     )
 
 

@@ -1,16 +1,42 @@
+## uses some code from ur3_control
+
 import rclpy
 from rclpy.node import Node
 from pymoveit2 import MoveIt2
 from pymoveit2.robots import ur as robot
 from std_srvs.srv import Trigger
-from tf2_ros import Buffer, Duration, TransformListener
+from tf2_ros import Buffer, TransformListener
 from enum import Enum, auto
 import math
 import time
+import numpy as np
+from scipy.spatial.transform import Rotation
+from sensor_msgs.msg import Image
+from .model.model import PolicyNetwork
+import torch
+import torchvision.transforms.v2 as v2
+from collections import deque
+from dataclasses import dataclass
+
+MODEL_WEIGHTS_PATH = 'something'
+N_HISTORY          = 5
+HIDDEN_DIM         = 512
+
+# Gripper logit threshold — above this the network predicts close
+GRIPPER_THRESHOLD  = 0.0
+
 
 class Gripper(Enum):
-    OPEN = auto()
+    OPEN  = auto()
     CLOSE = auto()
+
+
+@dataclass
+class HistoryElement:
+    position:      list[float]
+    orientation:   list[float]   # xyzw quaternion
+    gripper_state: Gripper
+
 
 class UR3Inference(Node):
     PLANNING_TIME       = 5.0
@@ -19,8 +45,8 @@ class UR3Inference(Node):
     TOLERANCE           = 0.01
     GRIPPER_TIMEOUT_SEC = 5.0
 
-    OMPL_MAX_VEL   = 0.1
-    OMPL_MAX_ACC   = 0.1
+    OMPL_MAX_VEL  = 0.1
+    OMPL_MAX_ACC  = 0.1
 
     def __init__(self):
         super().__init__("UR3_Inference_Node")
@@ -29,7 +55,7 @@ class UR3Inference(Node):
             joint_names=robot.joint_names(),
             base_link_name=robot.base_link_name(),
             end_effector_name=robot.end_effector_name(),
-            group_name=robot.MOVE_GROUP_ARM
+            group_name=robot.MOVE_GROUP_ARM,
         )
 
         self._moveit2.planner_id        = "ompl/RRTConnectkConfigDefault"
@@ -38,45 +64,217 @@ class UR3Inference(Node):
         self._moveit2.max_velocity      = self.OMPL_MAX_VEL
         self._moveit2.max_acceleration  = self.OMPL_MAX_ACC
 
-        self._gripper_open = self.create_client(Trigger, "/gripper/open")
+        self._gripper_open  = self.create_client(Trigger, "/gripper/open")
         self._gripper_close = self.create_client(Trigger, "/gripper/close")
+        self.current_gripper_state = Gripper.OPEN
+
+        self.image_subscriber = self.create_subscription(
+            Image, '/camera/realsense_camera/color/image_raw',
+            self.image_callback, 10)
+        self.latest_image = None
+
+        # Image preprocessing to match training pipeline
+        self.preprocess = v2.Compose([
+            v2.ToImage(),
+            v2.Resize((224, 224)),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225]),
+        ])
+
+        self.model = PolicyNetwork(n_history=N_HISTORY, hidden_dim=HIDDEN_DIM)
+        self.model.eval()
+        state_dict = torch.load(MODEL_WEIGHTS_PATH, weights_only=True)
+        self.model.load_state_dict(state_dict)
+
+        self.history = deque(maxlen=N_HISTORY)
+        # Populate history at ~10Hz (every 0.1s) to match training spacing
+        self.history_timer = self.create_timer(0.1, self.add_to_history)
 
         self._tf_buffer   = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
-        self.get_logger().info("UR3Robot ready.")
+        self.get_logger().info("UR3Inference ready.")
 
+    # ── History ───────────────────────────────────────────────────────────────
 
-    def move(self):
-        pos = [-0.19685978353575456,0.08411729105998772,0.41083662882897576]
-        quat = [0.7318706791974158,0.6808237485839617,-0.025284886806180202,-0.014318058331861576]
-        
+    def add_to_history(self):
+        try:
+            tf = self._tf_buffer.lookup_transform(
+                robot.base_link_name(),
+                robot.end_effector_name(),
+                rclpy.time.Time(),
+            )
+            t = tf.transform.translation
+            r = tf.transform.rotation
+            self.history.append(HistoryElement(
+                position=[t.x, t.y, t.z],
+                orientation=[r.x, r.y, r.z, r.w],
+                gripper_state=self.current_gripper_state,
+            ))
+        except Exception as e:
+            self.get_logger().warn(f'History TF lookup failed: {e}')
 
-        self.get_logger().info("  Planning OMPL Cartesian...")
+    def _history_ready(self) -> bool:
+        return len(self.history) == N_HISTORY
+
+    def _build_history_tensor(self) -> torch.Tensor:
+        """Build (1, N_HISTORY, 8) tensor from history deque.
+        Each row: [x, y, z, qx, qy, qz, qw, gripper]
+        """
+        rows = []
+        for h in self.history:
+            gripper = 1.0 if h.gripper_state == Gripper.CLOSE else 0.0
+            rows.append(h.position + h.orientation + [gripper])
+        return torch.tensor(rows, dtype=torch.float32).unsqueeze(0)  # (1, N, 8)
+
+    # ── Image ─────────────────────────────────────────────────────────────────
+
+    def image_callback(self, msg: Image):
+        # Convert ROS Image message to numpy then to tensor
+        np_img = np.frombuffer(msg.data, dtype=np.uint8).reshape(
+            msg.height, msg.width, -1)
+        # Handle encoding — drop alpha channel if present
+        if msg.encoding in ('rgba8', 'bgra8'):
+            np_img = np_img[:, :, :3]
+        if msg.encoding in ('bgr8', 'bgra8'):
+            np_img = np_img[:, :, ::-1].copy()
+        self.latest_image = self.preprocess(np_img)  # (3, 224, 224)
+
+    # ── Inference ─────────────────────────────────────────────────────────────
+
+    def run_task(self):
+        """
+        Main inference loop. Runs until the task completes (gripper closes
+        and the arm stops moving) or a move fails.
+        """
+        self.get_logger().info('Waiting for history buffer to fill...')
+        while not self._history_ready():
+            rclpy.spin_once(self, timeout_sec=0.05)
+
+        self.get_logger().info('Waiting for first image...')
+        while self.latest_image is None:
+            rclpy.spin_once(self, timeout_sec=0.05)
+
+        self.get_logger().info('Starting inference loop.')
+
+        while True:
+            # Spin briefly to process callbacks and get latest image/history
+            rclpy.spin_once(self, timeout_sec=0.0)
+
+            image   = self.latest_image.unsqueeze(0)        # (1, 3, 224, 224)
+            history = self._build_history_tensor()          # (1, N_HISTORY, 8)
+
+            with torch.no_grad():
+                pred = self.model(image, history)
+
+            delta_position    = pred['delta_position'][0].numpy()     # (3,)
+            delta_orientation = pred['delta_orientation'][0].numpy()  # (4,) xyzw
+            gripper_logit     = pred['gripper_state'][0].item()
+            target_gripper    = Gripper.CLOSE if gripper_logit > GRIPPER_THRESHOLD \
+                                else Gripper.OPEN
+
+            # Look up current EE pose
+            try:
+                tf = self._tf_buffer.lookup_transform(
+                    robot.base_link_name(),
+                    robot.end_effector_name(),
+                    rclpy.time.Time(),
+                )
+            except Exception as e:
+                self.get_logger().warn(f'TF lookup failed: {e}')
+                continue
+
+            t = tf.transform.translation
+            r = tf.transform.rotation
+
+            current_position    = np.array([t.x, t.y, t.z])
+            current_orientation = np.array([r.x, r.y, r.z, r.w])
+
+            # Compose orientations: apply delta in world frame
+            # (matches training: r_delta = r_next * r_current.inv())
+            r_current = Rotation.from_quat(current_orientation)
+            r_delta   = Rotation.from_quat(delta_orientation)
+            r_target  = r_delta * r_current
+            target_orientation = r_target.as_quat()             # xyzw
+            target_position    = current_position + delta_position
+
+            # Move gripper first so the arm arrives in the right state
+            gripper_success = self.move_gripper(target_gripper)
+            if not gripper_success:
+                self.get_logger().error('Gripper action failed, aborting.')
+                return False
+
+            # Move arm
+            move_success = self.move(
+                position=target_position.tolist(),
+                orientation=target_orientation.tolist(),
+            )
+            if not move_success:
+                self.get_logger().warn('Move failed, retrying from current pose.')
+                continue
+
+            # Check for task completion: gripper closed and delta is near zero
+            position_delta_norm = np.linalg.norm(delta_position)
+            if (target_gripper == Gripper.CLOSE
+                    and position_delta_norm < self.TOLERANCE):
+                self.get_logger().info('Task complete.')
+                return True
+
+    # ── Motion ────────────────────────────────────────────────────────────────
+
+    def move_gripper(self, action: Gripper) -> bool:
+        if action == self.current_gripper_state:
+            return True
+        cli   = self._gripper_open if action is Gripper.OPEN else self._gripper_close
+        label = action.name
+        self.get_logger().info(f'Gripper -> {label}')
+        success = self._call_trigger(cli)
+        if success:
+            self.current_gripper_state = action
+        return success
+
+    def _call_trigger(self, cli) -> bool:
+        future   = cli.call_async(Trigger.Request())
+        deadline = time.time() + self.GRIPPER_TIMEOUT_SEC
+        while not future.done():
+            rclpy.spin_once(self, timeout_sec=0.05)
+            if time.time() > deadline:
+                self.get_logger().error('Gripper service call timed out.')
+                return False
+        resp = future.result()
+        if resp is None:
+            self.get_logger().error('Gripper service returned None.')
+            return False
+        self.get_logger().info(f'Gripper result: {resp.message}')
+        return resp.success
+
+    def move(self, position, orientation) -> bool:
+        self.get_logger().info('Planning OMPL Cartesian...')
         trajectory = self._moveit2.plan(
-            position=pos,
-            quat_xyzw=quat,
+            position=position,
+            quat_xyzw=orientation,
             cartesian=True,
         )
 
         if trajectory is not None:
-            self.get_logger().info("Cartesian plan succeeded, executing...")
+            self.get_logger().info('Cartesian plan succeeded, executing...')
             self._moveit2.execute(trajectory)
             self._moveit2.wait_until_executed()
-            dist = self._distance_to(pos)
-            self.get_logger().info(f"  [OMPL Cartesian] Distance to goal: {dist:.4f} m")
+            dist = self._distance_to(position)
+            self.get_logger().info(f'Distance to goal: {dist:.4f} m')
             if dist < self.TOLERANCE:
-                self.get_logger().info("  [OMPL Cartesian] Success.")
+                self.get_logger().info('Move succeeded.')
                 return True
-            self.get_logger().warn("  [OMPL Cartesian] Executed but did not reach goal.")
-        else:
-            self.get_logger().warn("  Cartesian plan failed, skipping execution.")
+            self.get_logger().warn('Executed but did not reach goal.')
             return False
-        
+        else:
+            self.get_logger().error('Cartesian plan failed.')
+            return False
+
     def add_obstacle(self, name: str, size: list, position: list):
         self._moveit2.add_collision_box(id=name, size=size, position=position,
                                         quat_xyzw=[0.0, 0.0, 0.0, 1.0])
         self.get_logger().info(f"Added obstacle '{name}' at {position}")
-
 
     def _distance_to(self, target: list) -> float:
         try:
@@ -86,31 +284,34 @@ class UR3Inference(Node):
                 rclpy.time.Time(),
             )
             t = tf.transform.translation
-            return math.sqrt((t.x-target[0])**2 + (t.y-target[1])**2 + (t.z-target[2])**2)
+            return math.sqrt((t.x - target[0])**2
+                           + (t.y - target[1])**2
+                           + (t.z - target[2])**2)
         except Exception as e:
-            self.get_logger().warn(f"TF lookup failed: {e}")
-            return float("inf")
-    
-    def move_joint(self):
-        self.get_logger().info("Moving to home position...")
-        self._moveit2.move_to_configuration([0.14636051654815674,-1.1905584794333954,-1.4117673635482788,-2.051380773583883,1.5758728981018066,0.2187575399875641], joint_names=robot.joint_names())
+            self.get_logger().warn(f'TF lookup failed: {e}')
+            return float('inf')
+
+    def move_to_home(self):
+        self.get_logger().info('Moving to home position...')
+        self._moveit2.move_to_configuration(
+            [0.14636051654815674, -1.1905584794333954, -1.4117673635482788,
+             -2.051380773583883,   1.5758728981018066,  0.2187575399875641],
+            joint_names=robot.joint_names())
         self._moveit2.wait_until_executed()
-        self.get_logger().info("Home reached.")
-        return True
+        self.get_logger().info('Home reached.')
 
 
 def main():
     rclpy.init()
-
     node = UR3Inference()
 
     time.sleep(5)
 
-    node.add_obstacle("table", size=[2.0, 2.0, 0.02], position=[0.0, 0.0, -0.05])
+    node.add_obstacle("table", size=[2.0, 2.0, 0.02], position=[0.0, 0.0, 0.0])
     node.add_obstacle("wall",  size=[0.02, 2.00, 2.0], position=[0.15, 0.0, 0.0])
 
-    # node.move_joint()
-    node.move()
+    node.move_to_home()
+    node.run_task()
 
     rclpy.shutdown()
 

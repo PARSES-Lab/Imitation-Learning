@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from model.spatial_softmax import SpatialSoftArgmax
+from .spatial_softmax import SpatialSoftArgmax
 import torchvision.models as models
 import torch.nn.functional as F
 
