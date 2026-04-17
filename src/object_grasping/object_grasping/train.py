@@ -18,6 +18,11 @@ def quaternion_delta(q_current: np.ndarray, q_next: np.ndarray) -> np.ndarray:
     r_next = Rotation.from_quat(q_next)
     r_delta = r_next * r_current.inv()
     delta_quat = r_delta.as_quat()
+
+    # Enforce consistent sign
+    if delta_quat[3] < 0:  # qw < 0
+        delta_quat = -delta_quat
+    
     return delta_quat
 
 
@@ -27,6 +32,14 @@ class SingleDemoDataset(Dataset):
         self.targets_df = pd.read_csv(targets_csv_path)
         self.image_dir = Path(image_dir)
         self.n_history = n_history
+
+        ## Set positive convention for quaternions
+        qw_negative = self.dataset_df["qw"] < 0
+        self.dataset_df.loc[qw_negative, ["qx", "qy", "qz", "qw"]] *= -1
+
+        # print(self.dataset_df[0:10])
+
+        # print(self.dataset_df[POSE_GRIPPER_COLS].agg(['min', 'max', 'mean']))
 
         self.augmentation = v2.Compose([
             v2.ToDtype(torch.float32, scale=True),
@@ -77,7 +90,7 @@ class SingleDemoDataset(Dataset):
         return {
             'image': image,
             'history': history_vector,
-            'delta_position': torch.tensor(delta_position, dtype=torch.float32),
+            'delta_position': torch.tensor(delta_position, dtype=torch.float32) * 100,
             'delta_orientation': torch.tensor(delta_orientation, dtype=torch.float32),
             'gripper_state': torch.tensor([gripper_state], dtype=torch.float32),
         }
@@ -122,8 +135,8 @@ def load_dataset_from_yaml(config_path, n_history) -> ConcatDataset:
 def train(
         config_path,
         n_history = 5,
-        hidden_dim = 512,
-        epochs = 30,
+        hidden_dim = 256,
+        epochs = 15,
         batch_size = 64,
         lr = 1e-3
 ):
@@ -204,12 +217,12 @@ def train(
     validation_loss = np.mean(val_losses)
     print(f"Validation loss: {validation_loss}")
 
-    torch.save(model.state_dict(), 'Graspingv1.pth')
+    torch.save(model.state_dict(), '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth')
 
 
 if __name__ == '__main__':
     train(
-        config_path='/home/joeya/Imitation-Learning/src/object_grasping/dataset_config.yaml'
+        config_path='/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/dataset_config.yaml'
     )
 
 

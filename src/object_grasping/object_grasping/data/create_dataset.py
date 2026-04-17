@@ -4,9 +4,12 @@ from pathlib import Path
 import yaml
 
 POSE_COLS = ['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw']
+POSITION_COLS = ['x', 'y', 'z']
 
 
 def pair_images_and_poses(image_dir, poses_csv, dataset_csv):
+    """Pairs images to the corresponding pose at the nearest timestamp"""
+    
     poses = pd.read_csv(poses_csv)
     images = sorted(Path(image_dir).glob('*.pt'))
 
@@ -26,6 +29,7 @@ def pair_images_and_poses(image_dir, poses_csv, dataset_csv):
 
 def add_gripper_column(csv_path: str, yaml_path: str,
                        lookahead_seconds: float = 2.0):
+    """Adds gripper state to the dataset using the recorded trajectory."""
     df = pd.read_csv(csv_path)
 
     with open(yaml_path) as f:
@@ -58,16 +62,19 @@ def add_gripper_column(csv_path: str, yaml_path: str,
           f'({100 * sum(states) / len(states):.1f}%)')
 
 
-def find_target_index(df: pd.DataFrame, i: int, pose_threshold=0.001) -> int:
-    current_pose    = df.iloc[i][POSE_COLS].to_numpy(dtype=np.float32)
+def find_target_index(df: pd.DataFrame, i: int, position_threshold=0.01) -> int:
+    """Assigns the target state as the nearest timestamp in the future where either the
+    gripper state has changed or the position of the end effector has changed by more than 0.01 meters"""
+
+    current_position    = df.iloc[i][POSITION_COLS].to_numpy(dtype=np.float32)
     current_gripper = df.iloc[i]['gripper']
 
     target = i + 1
     while target < len(df):
-        target_pose    = df.iloc[target][POSE_COLS].to_numpy(dtype=np.float32)
+        target_position    = df.iloc[target][POSITION_COLS].to_numpy(dtype=np.float32)
         target_gripper = df.iloc[target]['gripper']
         if target_gripper != current_gripper or \
-                np.linalg.norm(current_pose - target_pose) > pose_threshold:
+                np.linalg.norm(current_position - target_position) > position_threshold:
             break
         target += 1
 
@@ -75,7 +82,9 @@ def find_target_index(df: pd.DataFrame, i: int, pose_threshold=0.001) -> int:
 
 
 def find_history_indices(df: pd.DataFrame, i: int,
-                         n_history: int, spacing_seconds: float = 0.1) -> list[int]:
+                         n_history: int, spacing_seconds: float = 0.5) -> list[int]:
+    """Finds the indexes in the dataset that represent the history of the current state, which is the 
+    current state plus 4 previous states spanning the last 2 seconds"""
     current_time = df.iloc[i]['timestamp']
     history = []
 
@@ -92,7 +101,10 @@ def find_history_indices(df: pd.DataFrame, i: int,
 
 
 def precompute_samples(df: pd.DataFrame, n_history: int,
-                       spacing_seconds: float = 0.2) -> list[dict]:
+                       spacing_seconds: float = 0.4) -> list[dict]:
+    """Creates the dataset of current index in the dataframe, the target index, and indexes of the history of the
+    current state"""
+
     targets = [find_target_index(df, i) for i in range(len(df))]
 
     samples = []
@@ -110,8 +122,9 @@ def precompute_samples(df: pd.DataFrame, n_history: int,
 
 
 if __name__ == '__main__':
+    for i in range(1, 21):
         n_history = 5
-        demo_num    = 1
+        demo_num    = i
         poses_csv   = f'/home/joeya/dataset/demo{demo_num}/poses.csv'
         dataset_csv = f'/home/joeya/dataset/demo{demo_num}/dataset.csv'
         image_dir   = f'/home/joeya/dataset/demo{demo_num}'
