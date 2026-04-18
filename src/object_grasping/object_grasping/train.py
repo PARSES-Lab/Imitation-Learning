@@ -8,9 +8,17 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 from pathlib import Path
 import yaml
+import optuna
+from optuna.visualization import plot_param_importances, plot_optimization_history
+from optuna.trial import TrialState
 
 POSE_COLS = ['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw']
 POSE_GRIPPER_COLS = ['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'gripper']
+CONFIG_PATH='/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/dataset_config.yaml'
+N_HISTORY = 5
+EPOCHS = 15
+
+dataset = None
 
 
 def quaternion_delta(q_current: np.ndarray, q_next: np.ndarray) -> np.ndarray:
@@ -132,29 +140,26 @@ def load_dataset_from_yaml(config_path, n_history) -> ConcatDataset:
 
 
 
-def train(
-        config_path,
-        n_history = 5,
+def train_and_save(
         hidden_dim = 256,
-        epochs = 15,
-        batch_size = 64,
-        lr = 1e-3
+        batch_size = 32,
+        lr = 0.0015
 ):
+    dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
+
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f'Using {device}')
-
-    dataset = load_dataset_from_yaml(config_path, n_history)
 
     training_set, validation_set = random_split(dataset, [0.9, 0.1])
     train_loader = DataLoader(training_set, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
     validation_loader = DataLoader(validation_set, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
 
-    model = PolicyNetwork(n_history=n_history, hidden_dim=hidden_dim).to(device)
+    model = PolicyNetwork(n_history=N_HISTORY, hidden_dim=hidden_dim).to(device)
     loss_fn = PolicyNetworkLoss().to(device)
     optimizer = torch.optim.Adam(model.trainable_parameters(), lr=lr)
 
 
-    for epoch in range(epochs):
+    for epoch in range(EPOCHS):
         model.train()
         train_losses = []
 
@@ -220,11 +225,114 @@ def train(
     torch.save(model.state_dict(), '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth')
 
 
+def objective(trial: optuna.Trial) -> float:
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    learning_rate = trial.suggest_float('lr', 1e-4, 1e-2, log=True)
+    hidden_dim = trial.suggest_categorical('hidden_dim', [128, 256, 512])
+    batch_size = trial.suggest_categorical('batch_size', [32, 64, 128])
+
+    training_set, validation_set = random_split(dataset, [0.9, 0.1])
+    train_loader = DataLoader(training_set, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
+    validation_loader = DataLoader(validation_set, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
+
+    model = PolicyNetwork(n_history=N_HISTORY, hidden_dim=hidden_dim).to(device)
+    loss_fn = PolicyNetworkLoss().to(device)
+    optimizer = torch.optim.Adam(model.trainable_parameters(), lr=learning_rate)
+
+    for epoch in range(EPOCHS):
+
+        ## Training loop
+        model.train()
+
+        for batch in train_loader:
+            image = batch['image'].to(device)
+            history = batch['history'].to(device)
+            target = {
+                'delta_position': batch['delta_position'].to(device),
+                'delta_orientation': batch['delta_orientation'].to(device),
+                'gripper_state': batch['gripper_state'].to(device)
+            }
+
+            optimizer.zero_grad()
+            preds = model(image, history)
+            losses = loss_fn(preds, target)
+            losses['total'].backward()
+            optimizer.step()
+        
+
+        ## Validation loop
+        model.eval()
+        val_losses = []
+
+        with torch.no_grad():
+            for batch in validation_loader:
+                image = batch['image'].to(device)
+                history = batch['history'].to(device)
+                target = {
+                    'delta_position': batch['delta_position'].to(device),
+                    'delta_orientation': batch['delta_orientation'].to(device),
+                    'gripper_state': batch['gripper_state'].to(device)
+                }
+                preds = model(image, history)
+                losses = loss_fn(preds, target)
+                val_losses.append(losses['total'].item())
+
+        
+        validation_loss = np.mean(val_losses)
+
+        trial.report(validation_loss, epoch)
+
+        if trial.should_prune():
+            raise optuna.exceptions.TrialPruned()
+    
+    return validation_loss
+    
+
 if __name__ == '__main__':
-    train(
-        config_path='/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/dataset_config.yaml'
-    )
+    # study = optuna.create_study(
+    #     direction='minimize',
+    #     pruner=optuna.pruners.MedianPruner(),
+    #     study_name='imitation_learning'
+    # )
+
+    # dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
+
+    # study.optimize(objective, n_trials=20, show_progress_bar=True)
+
+    # pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    # complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+
+    # print("Study statistics: ")
+    # print("  Number of finished trials: ", len(study.trials))
+    # print("  Number of pruned trials: ", len(pruned_trials))
+    # print("  Number of complete trials: ", len(complete_trials))
+
+    # print("Best trial:")
+    # trial = study.best_trial
+
+    # print("  Value: ", trial.value)
+
+    # print("  Params: ")
+    # for key, value in trial.params.items():
+    #     print("    {}: {}".format(key, value))
 
 
+    # fig_importance = plot_param_importances(study)
+    # fig_history = plot_optimization_history(study)
 
-## for tuning - learning rate, # of hidden units, batch size
+    # fig_importance.show()
+    # fig_history.show()
+
+    # fig_importance.write_html('param_importances.html')
+    # fig_history.write_html('optimization_history.html')
+
+
+    # train_and_save(trial.params['hidden_dim'], trial.params['batch_size'], trial.params['lr'])
+
+
+    hidden_dim = 256
+    batch_size = 32
+    lr = 0.0015
+    train_and_save(hidden_dim, batch_size, lr)
