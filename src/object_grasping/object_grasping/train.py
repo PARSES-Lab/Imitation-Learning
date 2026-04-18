@@ -15,7 +15,7 @@ from optuna.trial import TrialState
 POSE_COLS = ['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw']
 POSE_GRIPPER_COLS = ['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'gripper']
 CONFIG_PATH='/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/dataset_config.yaml'
-N_HISTORY = 5
+N_HISTORY = 1
 EPOCHS = 15
 
 dataset = None
@@ -325,8 +325,8 @@ if __name__ == '__main__':
     # fig_importance.show()
     # fig_history.show()
 
-    # fig_importance.write_html('param_importances.html')
-    # fig_history.write_html('optimization_history.html')
+    # fig_importance.write_html('param_importances_nhistory1.html')
+    # fig_history.write_html('optimization_history_nhistory1.html')
 
 
     # train_and_save(trial.params['hidden_dim'], trial.params['batch_size'], trial.params['lr'])
@@ -334,5 +334,5 @@ if __name__ == '__main__':
 
     hidden_dim = 256
     batch_size = 32
-    lr = 0.0015
+    lr = 0.0001
     train_and_save(hidden_dim, batch_size, lr)

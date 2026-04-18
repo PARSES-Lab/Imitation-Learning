@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from train import load_dataset_from_yaml
 import torch.nn.functional as F
 
-N_HISTORY = 5
+N_HISTORY = 1
 HIDDEN_DIM = 256
 MODEL_WEIGHTS_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth'
 CONFIG_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/dataset_config.yaml'

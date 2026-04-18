@@ -6,6 +6,8 @@ import yaml
 POSE_COLS = ['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw']
 POSITION_COLS = ['x', 'y', 'z']
 
+N_HISTORY = 1
+
 
 def pair_images_and_poses(image_dir, poses_csv, dataset_csv):
     """Pairs images to the corresponding pose at the nearest timestamp"""
@@ -123,7 +125,6 @@ def precompute_samples(df: pd.DataFrame, n_history: int,
 
 if __name__ == '__main__':
     for i in range(1, 21):
-        n_history = 5
         demo_num    = i
         poses_csv   = f'/home/joeya/dataset/demo{demo_num}/poses.csv'
         dataset_csv = f'/home/joeya/dataset/demo{demo_num}/dataset.csv'
@@ -137,11 +138,11 @@ if __name__ == '__main__':
                         lookahead_seconds=2.0)
 
         df = pd.read_csv(dataset_csv)
-        samples = precompute_samples(df, n_history=n_history)
+        samples = precompute_samples(df, n_history=N_HISTORY)
         samples_df = pd.DataFrame([{
             'current_idx': s['current_idx'],
             'target_idx':  s['target_idx'],
-            **{f'history_{j}': s[f'history_{j}'] for j in range(n_history)},
+            **{f'history_{j}': s[f'history_{j}'] for j in range(N_HISTORY)},
         } for s in samples])
         samples_df.to_csv(targets_csv, index=False)
         print(f'Saved final dataset with {len(samples_df)} rows')
