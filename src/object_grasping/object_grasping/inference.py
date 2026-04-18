@@ -18,6 +18,7 @@ import torchvision.transforms.v2 as v2
 from collections import deque
 from dataclasses import dataclass
 
+# MODEL_WEIGHTS_PATH = '/home/parses/ros2_ws/src/object_grasping/object_grasping/Graspingv1.pth'
 MODEL_WEIGHTS_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth'
 N_HISTORY          = 1    ## this script assumes history is just the latest state
 HIDDEN_DIM         = 256
@@ -88,12 +89,8 @@ class UR3Inference(Node):
 
         self.model = PolicyNetwork(n_history=N_HISTORY, hidden_dim=HIDDEN_DIM)
         self.model.eval()
-        state_dict = torch.load(MODEL_WEIGHTS_PATH, weights_only=True)
+        state_dict = torch.load(MODEL_WEIGHTS_PATH, weights_only=True, map_location=torch.device('cpu'))
         self.model.load_state_dict(state_dict)
-
-        # self.history = deque(maxlen=N_HISTORY)
-        # Populate history every 0.4s to match training spacing
-        # self.history_timer = self.create_timer(0.4, self.add_to_history)
 
         self._tf_buffer   = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
@@ -187,12 +184,6 @@ class UR3Inference(Node):
             target_orientation = r_target.as_quat()             # xyzw
             target_position    = current_position + delta_position
 
-            # Move gripper first so the arm arrives in the right state
-            gripper_success = self.move_gripper(target_gripper)
-            if not gripper_success:
-                self.get_logger().error('Gripper action failed, aborting.')
-                return False
-
             # Move arm
             move_success = self.move(
                 position=target_position.tolist(),
@@ -200,6 +191,12 @@ class UR3Inference(Node):
             )
             if not move_success:
                 self.get_logger().error('Move failed, aborting.')
+                return False
+            
+            # Move gripper
+            gripper_success = self.move_gripper(target_gripper)
+            if not gripper_success:
+                self.get_logger().error('Gripper action failed, aborting.')
                 return False
 
             # Check for task completion: gripper closed and delta is near zero
@@ -256,7 +253,7 @@ class UR3Inference(Node):
             if dist < self.TOLERANCE:
                 self.get_logger().info('Move succeeded.')
                 return True
-            self.get_logger().warn('Executed but did not reach goal.')
+            self.get_logger().error('Executed but did not reach goal.')
             return False
         else:
             self.get_logger().error('Cartesian plan failed.')
