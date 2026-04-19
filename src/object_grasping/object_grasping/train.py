@@ -16,7 +16,7 @@ POSE_COLS = ['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw']
 POSE_GRIPPER_COLS = ['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'gripper']
 CONFIG_PATH='/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/dataset_config.yaml'
 N_HISTORY = 1
-EPOCHS = 15
+EPOCHS = 20
 
 dataset = None
 
@@ -53,12 +53,12 @@ class SingleDemoDataset(Dataset):
             v2.ToDtype(torch.float32, scale=True),
             v2.RandomResizedCrop(
                 size=(224, 224),
-                scale=(0.95, 1.0),   # crop between 95% and 100% of the image area
+                scale=(0.9, 1.0),   # crop between 90% and 100% of the image area
                 ratio=(0.9, 1.1),   # keep roughly square
             ),
             v2.RandomAffine(
-                degrees=3,
-                translate=(0.03, 0.03),
+                degrees=4,
+                translate=(0.05, 0.05)
             ),
             v2.ColorJitter(
                 brightness=0.2,
@@ -334,5 +334,5 @@ if __name__ == '__main__':
 
     hidden_dim = 256
     batch_size = 32
-    lr = 0.0001
+    lr = 0.001
     train_and_save(hidden_dim, batch_size, lr)
