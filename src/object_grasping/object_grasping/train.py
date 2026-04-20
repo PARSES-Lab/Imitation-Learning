@@ -61,9 +61,9 @@ class SingleDemoDataset(Dataset):
                 translate=(0.05, 0.05)
             ),
             v2.ColorJitter(
-                brightness=0.2,
-                contrast=0.2,
-                saturation=0.2,
+                brightness=0.1,
+                contrast=0.1,
+                saturation=0.1,
                 hue=0.05
             ),
             v2.Normalize(
@@ -230,7 +230,7 @@ def objective(trial: optuna.Trial) -> float:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     learning_rate = trial.suggest_float('lr', 1e-4, 1e-2, log=True)
-    hidden_dim = trial.suggest_categorical('hidden_dim', [128, 256, 512])
+    hidden_dim = trial.suggest_int('hidden_dim', low=100, high=500, step=10)
     batch_size = trial.suggest_categorical('batch_size', [32, 64, 128])
 
     training_set, validation_set = random_split(dataset, [0.9, 0.1])
@@ -291,48 +291,48 @@ def objective(trial: optuna.Trial) -> float:
     
 
 if __name__ == '__main__':
-    # study = optuna.create_study(
-    #     direction='minimize',
-    #     pruner=optuna.pruners.MedianPruner(),
-    #     study_name='imitation_learning'
-    # )
+    study = optuna.create_study(
+        direction='minimize',
+        pruner=optuna.pruners.MedianPruner(),
+        study_name='imitation_learning'
+    )
 
-    # dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
+    dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
 
-    # study.optimize(objective, n_trials=20, show_progress_bar=True)
+    study.optimize(objective, n_trials=20, show_progress_bar=True)
 
-    # pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
-    # complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+    pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
 
-    # print("Study statistics: ")
-    # print("  Number of finished trials: ", len(study.trials))
-    # print("  Number of pruned trials: ", len(pruned_trials))
-    # print("  Number of complete trials: ", len(complete_trials))
+    print("Study statistics: ")
+    print("  Number of finished trials: ", len(study.trials))
+    print("  Number of pruned trials: ", len(pruned_trials))
+    print("  Number of complete trials: ", len(complete_trials))
 
-    # print("Best trial:")
-    # trial = study.best_trial
+    print("Best trial:")
+    trial = study.best_trial
 
-    # print("  Value: ", trial.value)
+    print("  Value: ", trial.value)
 
-    # print("  Params: ")
-    # for key, value in trial.params.items():
-    #     print("    {}: {}".format(key, value))
-
-
-    # fig_importance = plot_param_importances(study)
-    # fig_history = plot_optimization_history(study)
-
-    # fig_importance.show()
-    # fig_history.show()
-
-    # fig_importance.write_html('param_importances_nhistory1.html')
-    # fig_history.write_html('optimization_history_nhistory1.html')
+    print("  Params: ")
+    for key, value in trial.params.items():
+        print("    {}: {}".format(key, value))
 
 
-    # train_and_save(trial.params['hidden_dim'], trial.params['batch_size'], trial.params['lr'])
+    fig_importance = plot_param_importances(study)
+    fig_history = plot_optimization_history(study)
+
+    fig_importance.show()
+    fig_history.show()
+
+    fig_importance.write_html('param_importances_nhistory1.html')
+    fig_history.write_html('optimization_history_nhistory1.html')
 
 
-    hidden_dim = 256
-    batch_size = 32
-    lr = 0.001
-    train_and_save(hidden_dim, batch_size, lr)
+    train_and_save(trial.params['hidden_dim'], trial.params['batch_size'], trial.params['lr'])
+
+
+    # hidden_dim = 256
+    # batch_size = 32
+    # lr = 0.001
+    # train_and_save(hidden_dim, batch_size, lr)

@@ -2,6 +2,7 @@
 
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
 from pymoveit2 import MoveIt2
 from pymoveit2.robots import ur as robot
 from std_srvs.srv import Trigger
@@ -15,16 +16,17 @@ from sensor_msgs.msg import Image
 from .model.model import PolicyNetwork
 import torch
 import torchvision.transforms.v2 as v2
-from collections import deque
 from dataclasses import dataclass
+import threading
+from rclpy.callback_groups import ReentrantCallbackGroup
 
 # MODEL_WEIGHTS_PATH = '/home/parses/ros2_ws/src/object_grasping/object_grasping/Graspingv1.pth'
 MODEL_WEIGHTS_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth'
 N_HISTORY          = 1    ## this script assumes history is just the latest state
-HIDDEN_DIM         = 256
+HIDDEN_DIM         = 450
 
-# Gripper logit threshold — above this the network predicts close
-GRIPPER_THRESHOLD  = 0.0
+# Gripper threshold — above this the network predicts close
+GRIPPER_THRESHOLD  = 0.7
 
 
 class Gripper(Enum):
@@ -51,12 +53,16 @@ class UR3Inference(Node):
 
     def __init__(self):
         super().__init__("UR3_Inference_Node")
+
+        self.moveit2_callback_group = ReentrantCallbackGroup()
+
         self._moveit2 = MoveIt2(
             node=self,
             joint_names=robot.joint_names(),
             base_link_name=robot.base_link_name(),
             end_effector_name=robot.end_effector_name(),
             group_name=robot.MOVE_GROUP_ARM,
+            callback_group=self.moveit2_callback_group
         )
 
         self._moveit2.planner_id        = "ompl/RRTConnectkConfigDefault"
@@ -68,6 +74,8 @@ class UR3Inference(Node):
         self._moveit2.cartesian_jump_threshold = 0.0
         self.cartesian_fraction_threshold = 1.0
         self.cartesian_max_step = 0.0025
+
+        self.shared_state_lock = threading.Lock()
 
         self._gripper_open  = self.create_client(Trigger, "/gripper/open")
         self._gripper_close = self.create_client(Trigger, "/gripper/close")
@@ -108,6 +116,7 @@ class UR3Inference(Node):
             r = tf.transform.rotation
             
             gripper = 1.0 if self.current_gripper_state == Gripper.CLOSE else 0.0
+            
             translation = [t.x, t.y, t.z]
             rotation = [r.x, r.y, r.z, r.w]
 
@@ -122,6 +131,7 @@ class UR3Inference(Node):
 
         except Exception as e:
             self.get_logger().warn(f'TF lookup failed for getting latest state: {e}')
+            return None
 
     # ── Image ─────────────────────────────────────────────────────────────────
 
@@ -134,7 +144,9 @@ class UR3Inference(Node):
             np_img = np_img[:, :, :3]
         if msg.encoding in ('bgr8', 'bgra8'):
             np_img = np_img[:, :, ::-1].copy()
-        self.latest_image = self.preprocess(np_img)  # (3, 224, 224)
+
+        with self.shared_state_lock:
+            self.latest_image = np_img
 
     # ── Inference ─────────────────────────────────────────────────────────────
 
@@ -144,17 +156,15 @@ class UR3Inference(Node):
         and the arm stops moving) or a move fails.
         """
 
-        self.get_logger().info('Waiting for first image...')
-        while self.latest_image is None:
-            rclpy.spin_once(self, timeout_sec=0.05)
-
         self.get_logger().info('Starting inference loop.')
 
         while True:
-            # Spin briefly to process callbacks and get latest image/history
-            rclpy.spin_once(self, timeout_sec=0.0)
+            time.sleep(0.05)
 
-            image   = self.latest_image.unsqueeze(0)        # (1, 3, 224, 224)
+            with self.shared_state_lock:
+                image   = self.latest_image.copy()
+                
+            image = self.preprocess(image).unsqueeze(0)    # (1, 3, 224, 224)
 
             current_state = self._get_latest_state()
             if current_state is None:
@@ -167,7 +177,8 @@ class UR3Inference(Node):
             delta_position    = pred['delta_position'][0].numpy() / 100     # (3,)
             delta_orientation = pred['delta_orientation'][0].numpy()  # (4,) xyzw
             gripper_logit     = pred['gripper_state'][0].item()
-            target_gripper    = Gripper.CLOSE if gripper_logit > GRIPPER_THRESHOLD else Gripper.OPEN
+            target_gripper    = Gripper.CLOSE if torch.sigmoid(gripper_logit) > GRIPPER_THRESHOLD else Gripper.OPEN
+
             
             ## enforce positive quaternion convention
             if delta_orientation[3] < 0:
@@ -205,6 +216,7 @@ class UR3Inference(Node):
                     and position_delta_norm < self.TOLERANCE):
                 self.get_logger().info('Task complete.')
                 return True
+        
 
     # ── Motion ────────────────────────────────────────────────────────────────
 
@@ -345,18 +357,25 @@ class UR3Inference(Node):
 def main():
     rclpy.init()
     node = UR3Inference()
-
-    time.sleep(5)
+    
+    executor = MultiThreadedExecutor(num_threads=2)
+    executor.add_node(node)
 
     node.add_obstacle("table", size=[2.0, 2.0, 0.02], position=[0.0, 0.0, -0.05])
     node.add_obstacle("wall",  size=[0.02, 2.00, 2.0], position=[0.15, 0.0, 0.0])
     node.add_obstacle("bar", size=[0.05, 0.05, 2.5], position=[0.1, -0.1, 0.0])
 
     home_success = node.move_to_home()
-    if home_success:
-        # node.move_fail()
-        node.run_task()
+    if not home_success:
+        executor.shutdown()
+        rclpy.shutdown()
 
+    
+    task_thread = threading.Thread(target=node.run_task)
+    task_thread.start()
+    executor.spin()
+
+    task_thread.join()
     rclpy.shutdown()
 
 

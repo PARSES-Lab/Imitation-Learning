@@ -7,7 +7,7 @@ import torchvision.transforms.v2 as v2
 import numpy as np
 
 N_HISTORY = 1
-HIDDEN_DIM = 256
+HIDDEN_DIM = 450
 MODEL_WEIGHTS_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth'
 CONFIG_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/dataset_config.yaml'
 
