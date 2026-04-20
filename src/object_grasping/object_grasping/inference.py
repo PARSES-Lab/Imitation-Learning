@@ -139,8 +139,8 @@ class UR3Inference(Node):
 
         with self.shared_state_lock:
             self.latest_image = np_img
-            self.latest_image_time = rclpy.time.Time.from_msg(msg.header.stamp)
-            # self.latest_image_time = self.get_clock().now()
+            # self.latest_image_time = rclpy.time.Time.from_msg(msg.header.stamp)
+            self.latest_image_time = self.get_clock().now()
 
     # ── Inference ─────────────────────────────────────────────────────────────
 
@@ -153,17 +153,17 @@ class UR3Inference(Node):
         self.get_logger().info('Starting inference loop.')
 
         while True:
-            # time.sleep(1.0)
 
             with self.shared_state_lock:
-                if self.latest_image is None or self.latest_image_time is None:
-                    continue
-                image   = self.latest_image.copy()
+                image   = self.latest_image.copy() if self.latest_image is not None else None
                 image_time = self.latest_image_time
+                time_after_action = self.time_after_action
+            
+            if image is None or image_time is None:
+                continue
                 
-            if self.time_after_action is not None:
-                delta = image_time - self.time_after_action
-                if delta.nanoseconds < 5_000_000_000:
+            if time_after_action is not None:
+                if image_time < time_after_action:
                     self.get_logger().info("Stale image, continuing")
                     continue
 
@@ -217,7 +217,8 @@ class UR3Inference(Node):
             
             # self.time_after_action = self.get_clock().now()
             with self.shared_state_lock:
-                self.time_after_action = self.latest_image_time
+                # self.time_after_action = self.latest_image_time
+                self.time_after_action = self.get_clock().now()
 
             # Check for task completion: gripper closed and delta is near zero
             position_delta_norm = np.linalg.norm(delta_position)
@@ -324,8 +325,11 @@ def main():
     rclpy.init()
     node = UR3Inference()
     
-    executor = MultiThreadedExecutor(num_threads=2)
+    executor = MultiThreadedExecutor(num_threads=8)
     executor.add_node(node)
+
+    executor_thread = threading.Thread(target=executor.spin, daemon=True)
+    executor_thread.start()
 
     node.add_obstacle("table", size=[2.0, 2.0, 0.02], position=[0.0, 0.0, -0.05])
     node.add_obstacle("wall",  size=[0.02, 2.00, 2.0], position=[0.15, 0.0, 0.0])
@@ -333,16 +337,12 @@ def main():
 
     home_success = node.move_to_home()
     if not home_success:
-        executor.shutdown()
         rclpy.shutdown()
+        return
 
-    
-    task_thread = threading.Thread(target=node.run_task)
-    task_thread.start()
-    executor.spin()
-
-    task_thread.join()
+    node.run_task()
     rclpy.shutdown()
+    executor_thread.join()
 
 
 if __name__ == "__main__":
