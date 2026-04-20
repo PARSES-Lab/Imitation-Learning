@@ -128,6 +128,7 @@ class UR3Inference(Node):
     # ── Image ─────────────────────────────────────────────────────────────────
 
     def image_callback(self, msg: Image):
+        # self.get_logger().info("Received image")
         # Convert ROS Image message to numpy then to tensor
         np_img = np.frombuffer(msg.data, dtype=np.uint8).reshape(
             msg.height, msg.width, -1)
@@ -160,11 +161,13 @@ class UR3Inference(Node):
                 time_after_action = self.time_after_action
             
             if image is None or image_time is None:
+                time.sleep(0.01)
                 continue
                 
             if time_after_action is not None:
                 if image_time < time_after_action:
-                    self.get_logger().info("Stale image, continuing")
+                    # self.get_logger().info("Stale image, continuing")
+                    time.sleep(0.01)
                     continue
 
                 
