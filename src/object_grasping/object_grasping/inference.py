@@ -75,6 +75,9 @@ class UR3Inference(Node):
         self.cartesian_fraction_threshold = 1.0
         self.cartesian_max_step = 0.0025
 
+        self.time_after_action = None
+        self.latest_image_time = None
+
         self.shared_state_lock = threading.Lock()
 
         self._gripper_open  = self.create_client(Trigger, "/gripper/open")
@@ -136,6 +139,8 @@ class UR3Inference(Node):
 
         with self.shared_state_lock:
             self.latest_image = np_img
+            self.latest_image_time = rclpy.time.Time.from_msg(msg.header.stamp)
+            # self.latest_image_time = self.get_clock().now()
 
     # ── Inference ─────────────────────────────────────────────────────────────
 
@@ -148,10 +153,20 @@ class UR3Inference(Node):
         self.get_logger().info('Starting inference loop.')
 
         while True:
-            time.sleep(1.0)
+            # time.sleep(1.0)
 
             with self.shared_state_lock:
+                if self.latest_image is None or self.latest_image_time is None:
+                    continue
                 image   = self.latest_image.copy()
+                image_time = self.latest_image_time
+                
+            if self.time_after_action is not None:
+                delta = image_time - self.time_after_action
+                if delta.nanoseconds < 5_000_000_000:
+                    self.get_logger().info("Stale image, continuing")
+                    continue
+
                 
             image = self.preprocess(image).unsqueeze(0)    # (1, 3, 224, 224)
 
@@ -199,6 +214,10 @@ class UR3Inference(Node):
             if not gripper_success:
                 self.get_logger().error('Gripper action failed, aborting.')
                 return False
+            
+            # self.time_after_action = self.get_clock().now()
+            with self.shared_state_lock:
+                self.time_after_action = self.latest_image_time
 
             # Check for task completion: gripper closed and delta is near zero
             position_delta_norm = np.linalg.norm(delta_position)
