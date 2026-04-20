@@ -20,8 +20,8 @@ from dataclasses import dataclass
 import threading
 from rclpy.callback_groups import ReentrantCallbackGroup
 
-# MODEL_WEIGHTS_PATH = '/home/parses/ros2_ws/src/object_grasping/object_grasping/Graspingv1.pth'
-MODEL_WEIGHTS_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth'
+MODEL_WEIGHTS_PATH = '/home/parses/ros2_ws/src/object_grasping/object_grasping/Graspingv1.pth'
+# MODEL_WEIGHTS_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth'
 N_HISTORY          = 1    ## this script assumes history is just the latest state
 HIDDEN_DIM         = 450
 
@@ -106,32 +106,21 @@ class UR3Inference(Node):
 
 
     def _get_latest_state(self):
-        try:
-            tf = self._tf_buffer.lookup_transform(
-                robot.base_link_name(),
-                robot.end_effector_name(),
-                rclpy.time.Time(),
-            )
-            t = tf.transform.translation
-            r = tf.transform.rotation
-            
-            gripper = 1.0 if self.current_gripper_state == Gripper.CLOSE else 0.0
-            
-            translation = [t.x, t.y, t.z]
-            rotation = [r.x, r.y, r.z, r.w]
+        joint_state = self._moveit2.joint_state
+        fk_pose = self._moveit2.compute_fk(joint_state.position)
+        gripper = 1.0 if self.current_gripper_state == Gripper.CLOSE else 0.0
+        translation = [fk_pose.pose.position.x, fk_pose.pose.position.y, fk_pose.pose.position.z]
+        rotation = [fk_pose.pose.orientation.x, fk_pose.pose.orientation.y, fk_pose.pose.orientation.z, fk_pose.pose.orientation.w]
 
-            rotation = np.array([r.x, r.y, r.z, r.w])
-            if rotation[3] < 0:
-                rotation *= -1
+        rotation = np.array(rotation)
+        if rotation[3] < 0:
+            rotation *= -1
 
-            rotation = rotation.tolist()
+        rotation = rotation.tolist()
             
-            latest_state = translation + rotation + [gripper]
-            return torch.tensor(latest_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, 8)
+        latest_state = translation + rotation + [gripper]
+        return torch.tensor(latest_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, 8)
 
-        except Exception as e:
-            self.get_logger().warn(f'TF lookup failed for getting latest state: {e}')
-            return None
 
     # ── Image ─────────────────────────────────────────────────────────────────
 
@@ -159,7 +148,7 @@ class UR3Inference(Node):
         self.get_logger().info('Starting inference loop.')
 
         while True:
-            time.sleep(0.05)
+            time.sleep(1.0)
 
             with self.shared_state_lock:
                 image   = self.latest_image.copy()
@@ -177,8 +166,9 @@ class UR3Inference(Node):
             delta_position    = pred['delta_position'][0].numpy() / 100     # (3,)
             delta_orientation = pred['delta_orientation'][0].numpy()  # (4,) xyzw
             gripper_logit     = pred['gripper_state'][0].item()
-            target_gripper    = Gripper.CLOSE if torch.sigmoid(gripper_logit) > GRIPPER_THRESHOLD else Gripper.OPEN
+            target_gripper    = Gripper.CLOSE if torch.sigmoid(torch.tensor(gripper_logit)) > GRIPPER_THRESHOLD else Gripper.OPEN
 
+            delta_orientation = delta_orientation / np.linalg.norm(delta_orientation)
             
             ## enforce positive quaternion convention
             if delta_orientation[3] < 0:
@@ -277,19 +267,14 @@ class UR3Inference(Node):
         self.get_logger().info(f"Added obstacle '{name}' at {position}")
 
     def _distance_to(self, target: list) -> float:
-        try:
-            tf = self._tf_buffer.lookup_transform(
-                robot.base_link_name(),
-                robot.end_effector_name(),
-                rclpy.time.Time(),
-            )
-            t = tf.transform.translation
-            return math.sqrt((t.x - target[0])**2
-                           + (t.y - target[1])**2
-                           + (t.z - target[2])**2)
-        except Exception as e:
-            self.get_logger().warn(f'TF lookup failed: {e}')
-            return float('inf')
+        joint_state = self._moveit2.joint_state
+        fk_pose = self._moveit2.compute_fk(joint_state.position)
+
+        translation = [fk_pose.pose.position.x, fk_pose.pose.position.y, fk_pose.pose.position.z]
+        return math.sqrt((translation[0] - target[0])**2
+                        + (translation[1] - target[1])**2
+                        + (translation[2] - target[2])**2)
+
 
     def move_to_home(self):
         home_position = [0.1464331, -1.1904891, -1.4117968, -2.05215813,   1.5758578,  0.21868976]
@@ -314,44 +299,6 @@ class UR3Inference(Node):
 
         self.get_logger().info('Home reached.')
         return True
-
-    # def move_fail(self):
-    #     state = self._get_latest_state()
-
-    #     if state is None:
-    #             self.get_logger().warn('Could not get latest state, aborting.')
-    #             return False
-        
-    #     current_position = state.squeeze()[0:3].numpy()
-    #     current_orientation = state.squeeze()[3:7].numpy()
-
-    #     current_position[0] += 0.02
-    #     position = current_position
-    #     orientation = current_orientation
-
-    #     self.get_logger().info('Planning OMPL Cartesian...')
-    #     trajectory = self._moveit2.plan(
-    #         position=position,
-    #         quat_xyzw=orientation,
-    #         cartesian=True,
-    #         cartesian_fraction_threshold=self.cartesian_fraction_threshold,
-    #         max_step = self.cartesian_max_step
-    #     )
-
-    #     if trajectory is not None:
-    #         self.get_logger().info('Cartesian plan succeeded, executing...')
-    #         self._moveit2.execute(trajectory)
-    #         self._moveit2.wait_until_executed()
-    #         dist = self._distance_to(position)
-    #         self.get_logger().info(f'Distance to goal: {dist:.4f} m')
-    #         if dist < self.TOLERANCE:
-    #             self.get_logger().info('Move succeeded.')
-    #             return True
-    #         self.get_logger().error('Executed but did not reach goal.')
-    #         return False
-    #     else:
-    #         self.get_logger().error('Cartesian plan failed.')
-    #         return False
 
 
 def main():
