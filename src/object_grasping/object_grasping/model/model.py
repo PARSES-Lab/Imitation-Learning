@@ -5,10 +5,9 @@ import torchvision.models as models
 import torch.nn.functional as F
 
 class PolicyNetwork(nn.Module):
-    def __init__(self, n_history, hidden_dim):
+    def __init__(self, hidden_dim):
         super().__init__()
 
-        self.n_history = n_history
         self.hidden_dim = hidden_dim
 
         ## Resnet18 encoder
@@ -33,24 +32,23 @@ class PolicyNetwork(nn.Module):
 
         ## Feedforward layers
         encoder_output_dim = 512 * 2
-        ff_input_dim = encoder_output_dim + self.n_history * 8
 
         self.feedforward = nn.Sequential(
-            nn.Linear(ff_input_dim, hidden_dim),
+            nn.Linear(encoder_output_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, 8)
         )
 
     
-    def forward(self, image: torch.Tensor, pose_history: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, image: torch.Tensor) -> dict[str, torch.Tensor]:
         batch_size = image.shape[0]
 
         with torch.no_grad():
             encoder_output = self.encoder(image)
 
         keypoints = self.spatial_softmax(encoder_output)
-        poses_flat = pose_history.view(batch_size, -1)
-        ff_input = torch.cat([keypoints, poses_flat], dim=1)
+        # poses_flat = pose_history.view(batch_size, -1)
+        ff_input = torch.cat([keypoints], dim=1)
 
         output = self.feedforward(ff_input)
 

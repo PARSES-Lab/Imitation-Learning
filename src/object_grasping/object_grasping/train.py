@@ -35,11 +35,10 @@ def quaternion_delta(q_current: np.ndarray, q_next: np.ndarray) -> np.ndarray:
 
 
 class SingleDemoDataset(Dataset):
-    def __init__(self, dataset_csv_path, targets_csv_path, image_dir, n_history):
+    def __init__(self, dataset_csv_path, targets_csv_path, image_dir):
         self.dataset_df = pd.read_csv(dataset_csv_path)
         self.targets_df = pd.read_csv(targets_csv_path)
         self.image_dir = Path(image_dir)
-        self.n_history = n_history
 
         ## Set positive convention for quaternions
         qw_negative = self.dataset_df["qw"] < 0
@@ -79,13 +78,13 @@ class SingleDemoDataset(Dataset):
         sample = self.targets_df.iloc[index]
         current_idx = sample['current_idx']
         target_idx = sample['target_idx']
-        history  = sample[[f'history_{j}' for j in range(self.n_history)]].values
+        # history  = sample[[f'history_{j}' for j in range(self.n_history)]].values
 
         image = torch.load(self.image_dir / Path(self.dataset_df.iloc[current_idx]['image']).with_suffix('.pt'))
         image = self.augmentation(image)
 
-        history_list = self.dataset_df.iloc[history][POSE_GRIPPER_COLS].to_numpy(dtype=np.float32)
-        history_vector = torch.tensor(history_list, dtype=torch.float32)
+        # history_list = self.dataset_df.iloc[history][POSE_GRIPPER_COLS].to_numpy(dtype=np.float32)
+        # history_vector = torch.tensor(history_list, dtype=torch.float32)
 
         current_pose = self.dataset_df.iloc[current_idx][POSE_COLS].to_numpy(dtype=np.float32)
         target_pose = self.dataset_df.iloc[target_idx][POSE_COLS].to_numpy(dtype=np.float32)
@@ -97,14 +96,14 @@ class SingleDemoDataset(Dataset):
 
         return {
             'image': image,
-            'history': history_vector,
+            # 'history': history_vector,
             'delta_position': torch.tensor(delta_position, dtype=torch.float32) * 100,
             'delta_orientation': torch.tensor(delta_orientation, dtype=torch.float32),
             'gripper_state': torch.tensor([gripper_state], dtype=torch.float32),
         }
     
 
-def load_dataset_from_yaml(config_path, n_history) -> ConcatDataset:
+def load_dataset_from_yaml(config_path) -> ConcatDataset:
     """Expects YAML format:
         
         demos:
@@ -129,7 +128,7 @@ def load_dataset_from_yaml(config_path, n_history) -> ConcatDataset:
             dataset_csv_path=demo['dataset_csv'],
             targets_csv_path=demo['targets_csv'],
             image_dir=demo['image_dir'],
-            n_history=n_history
+            # n_history=n_history
         )
         for demo in demos
     ]
@@ -145,7 +144,7 @@ def train_and_save(
         batch_size = 32,
         lr = 0.0015
 ):
-    dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
+    dataset = load_dataset_from_yaml(CONFIG_PATH)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f'Using {device}')
@@ -154,7 +153,7 @@ def train_and_save(
     train_loader = DataLoader(training_set, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
     validation_loader = DataLoader(validation_set, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
 
-    model = PolicyNetwork(n_history=N_HISTORY, hidden_dim=hidden_dim).to(device)
+    model = PolicyNetwork(hidden_dim=hidden_dim).to(device)
     loss_fn = PolicyNetworkLoss().to(device)
     optimizer = torch.optim.Adam(model.trainable_parameters(), lr=lr)
 
@@ -165,7 +164,7 @@ def train_and_save(
 
         for batch in train_loader:
             image = batch['image'].to(device)
-            history = batch['history'].to(device)
+            # history = batch['history'].to(device)
             target = {
                 'delta_position': batch['delta_position'].to(device),
                 'delta_orientation': batch['delta_orientation'].to(device),
@@ -173,7 +172,7 @@ def train_and_save(
             }
 
             optimizer.zero_grad()
-            preds = model(image, history)
+            preds = model(image)
             losses = loss_fn(preds, target)
             losses['total'].backward()
             optimizer.step()
@@ -291,48 +290,48 @@ def objective(trial: optuna.Trial) -> float:
     
 
 if __name__ == '__main__':
-    study = optuna.create_study(
-        direction='minimize',
-        pruner=optuna.pruners.MedianPruner(),
-        study_name='imitation_learning'
-    )
+    # study = optuna.create_study(
+    #     direction='minimize',
+    #     pruner=optuna.pruners.MedianPruner(),
+    #     study_name='imitation_learning'
+    # )
 
-    dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
+    # dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
 
-    study.optimize(objective, n_trials=20, show_progress_bar=True)
+    # study.optimize(objective, n_trials=20, show_progress_bar=True)
 
-    pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
-    complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+    # pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    # complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
 
-    print("Study statistics: ")
-    print("  Number of finished trials: ", len(study.trials))
-    print("  Number of pruned trials: ", len(pruned_trials))
-    print("  Number of complete trials: ", len(complete_trials))
+    # print("Study statistics: ")
+    # print("  Number of finished trials: ", len(study.trials))
+    # print("  Number of pruned trials: ", len(pruned_trials))
+    # print("  Number of complete trials: ", len(complete_trials))
 
-    print("Best trial:")
-    trial = study.best_trial
+    # print("Best trial:")
+    # trial = study.best_trial
 
-    print("  Value: ", trial.value)
+    # print("  Value: ", trial.value)
 
-    print("  Params: ")
-    for key, value in trial.params.items():
-        print("    {}: {}".format(key, value))
-
-
-    fig_importance = plot_param_importances(study)
-    fig_history = plot_optimization_history(study)
-
-    fig_importance.show()
-    fig_history.show()
-
-    fig_importance.write_html('param_importances_nhistory1.html')
-    fig_history.write_html('optimization_history_nhistory1.html')
+    # print("  Params: ")
+    # for key, value in trial.params.items():
+    #     print("    {}: {}".format(key, value))
 
 
-    train_and_save(trial.params['hidden_dim'], trial.params['batch_size'], trial.params['lr'])
+    # fig_importance = plot_param_importances(study)
+    # fig_history = plot_optimization_history(study)
+
+    # fig_importance.show()
+    # fig_history.show()
+
+    # fig_importance.write_html('param_importances_nhistory1.html')
+    # fig_history.write_html('optimization_history_nhistory1.html')
 
 
-    # hidden_dim = 256
-    # batch_size = 32
-    # lr = 0.001
-    # train_and_save(hidden_dim, batch_size, lr)
+    # train_and_save(trial.params['hidden_dim'], trial.params['batch_size'], trial.params['lr'])
+
+
+    hidden_dim = 450
+    batch_size = 32
+    lr = 0.001
+    train_and_save(hidden_dim, batch_size, lr)
