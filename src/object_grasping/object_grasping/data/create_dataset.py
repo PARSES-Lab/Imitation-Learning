@@ -64,7 +64,7 @@ def add_gripper_column(csv_path: str, yaml_path: str,
           f'({100 * sum(states) / len(states):.1f}%)')
 
 
-def find_target_index(df: pd.DataFrame, i: int, position_threshold=0.01) -> int:
+def find_target_index(df: pd.DataFrame, i: int, position_threshold=0.02) -> int:
     """Assigns the target state as the nearest timestamp in the future where either the
     gripper state has changed or the position of the end effector has changed by more than 0.01 meters"""
 
@@ -103,7 +103,7 @@ def find_history_indices(df: pd.DataFrame, i: int,
 
 
 def precompute_samples(df: pd.DataFrame, n_history: int,
-                       spacing_seconds: float = 0.4) -> list[dict]:
+                       spacing_seconds: float = 0.5) -> list[dict]:
     """Creates the dataset of current index in the dataframe, the target index, and indexes of the history of the
     current state"""
 
@@ -124,7 +124,7 @@ def precompute_samples(df: pd.DataFrame, n_history: int,
 
 
 if __name__ == '__main__':
-    for i in [2, 4, 6, 8, 10]:
+    for i in range(1, 20):
         demo_num    = i
         poses_csv   = f'/home/joeya/dataset/demo{demo_num}/poses.csv'
         dataset_csv = f'/home/joeya/dataset/demo{demo_num}/dataset.csv'

@@ -38,6 +38,7 @@ class PolicyNetwork(nn.Module):
         self.feedforward = nn.Sequential(
             nn.Linear(ff_input_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(p=0.2),
             nn.Linear(hidden_dim, 8)
         )
 
@@ -66,7 +67,7 @@ class PolicyNetwork(nn.Module):
 
 
 class PolicyNetworkLoss(nn.Module):
-    def __init__(self, position_weight=1, orientation_weight=1, gripper_weight=1):
+    def __init__(self, position_weight=2, orientation_weight=2, gripper_weight=1):
         super().__init__()
         self.position_weight = position_weight
         self.orientation_weight = orientation_weight
