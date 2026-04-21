@@ -124,7 +124,7 @@ def precompute_samples(df: pd.DataFrame, n_history: int,
 
 
 if __name__ == '__main__':
-    for i in range(1, 21):
+    for i in [2, 4, 6, 8, 10]:
         demo_num    = i
         poses_csv   = f'/home/joeya/dataset/demo{demo_num}/poses.csv'
         dataset_csv = f'/home/joeya/dataset/demo{demo_num}/dataset.csv'

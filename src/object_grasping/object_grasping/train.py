@@ -16,7 +16,7 @@ POSE_COLS = ['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw']
 POSE_GRIPPER_COLS = ['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'gripper']
 CONFIG_PATH='/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/dataset_config.yaml'
 N_HISTORY = 1
-EPOCHS = 20
+EPOCHS = 25
 
 dataset = None
 
@@ -332,7 +332,7 @@ if __name__ == '__main__':
     train_and_save(trial.params['hidden_dim'], trial.params['batch_size'], trial.params['lr'])
 
 
-    # hidden_dim = 256
+    # hidden_dim = 230
     # batch_size = 32
     # lr = 0.001
     # train_and_save(hidden_dim, batch_size, lr)

@@ -248,7 +248,7 @@ class UR3Inference(Node):
         future   = cli.call_async(Trigger.Request())
         deadline = time.time() + self.GRIPPER_TIMEOUT_SEC
         while not future.done():
-            rclpy.spin_once(self, timeout_sec=0.05)
+            # rclpy.spin_once(self, timeout_sec=0.05)
             if time.time() > deadline:
                 self.get_logger().error('Gripper service call timed out.')
                 return False

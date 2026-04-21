@@ -30,7 +30,8 @@ setup(
             'object_grasping_node = object_grasping.object_grasping_node:main',
             'record_joints_node = object_grasping.record_joints:main',
             'replay_joints_node = object_grasping.replay_joints:main',
-            'extract_poses_node = object_grasping.extract_poses:main',
+            'collect_joints_node = object_grasping.extract_poses:collect',
+            'process_fk_node     = object_grasping.extract_poses:process',
             'inference_node = object_grasping.inference:main'
         ],
     },
