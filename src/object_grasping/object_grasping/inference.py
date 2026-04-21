@@ -26,7 +26,7 @@ N_HISTORY          = 1    ## this script assumes history is just the latest stat
 HIDDEN_DIM         = 450
 
 # Gripper threshold — above this the network predicts close
-GRIPPER_THRESHOLD  = 0.7
+GRIPPER_THRESHOLD  = 0.8
 
 
 class Gripper(Enum):
@@ -45,7 +45,7 @@ class UR3Inference(Node):
     PLANNING_TIME       = 5.0
     OMPL_PLANNING_TIME  = 10.0
     MAX_RETRIES         = 3
-    TOLERANCE           = 0.01
+    TOLERANCE           = 0.001
     GRIPPER_TIMEOUT_SEC = 5.0
 
     OMPL_MAX_VEL  = 0.1
@@ -110,7 +110,11 @@ class UR3Inference(Node):
 
     def _get_latest_state(self):
         joint_state = self._moveit2.joint_state
-        fk_pose = self._moveit2.compute_fk(joint_state.position)
+        arm_names = robot.joint_names()
+        name_to_pos = dict(zip(joint_state.name, joint_state.position))
+        positions = [name_to_pos[n] for n in arm_names]
+        fk_pose = self._moveit2.compute_fk(positions)
+
         gripper = 1.0 if self.current_gripper_state == Gripper.CLOSE else 0.0
         translation = [fk_pose.pose.position.x, fk_pose.pose.position.y, fk_pose.pose.position.z]
         rotation = [fk_pose.pose.orientation.x, fk_pose.pose.orientation.y, fk_pose.pose.orientation.z, fk_pose.pose.orientation.w]
@@ -248,7 +252,8 @@ class UR3Inference(Node):
         future   = cli.call_async(Trigger.Request())
         deadline = time.time() + self.GRIPPER_TIMEOUT_SEC
         while not future.done():
-            rclpy.spin_once(self, timeout_sec=0.05)
+            # rclpy.spin_once(self, timeout_sec=0.05)
+            time.sleep(0.05)
             if time.time() > deadline:
                 self.get_logger().error('Gripper service call timed out.')
                 return False
@@ -291,7 +296,10 @@ class UR3Inference(Node):
 
     def _distance_to(self, target: list) -> float:
         joint_state = self._moveit2.joint_state
-        fk_pose = self._moveit2.compute_fk(joint_state.position)
+        arm_names = robot.joint_names()
+        name_to_pos = dict(zip(joint_state.name, joint_state.position))
+        positions = [name_to_pos[n] for n in arm_names]
+        fk_pose = self._moveit2.compute_fk(positions)
 
         translation = [fk_pose.pose.position.x, fk_pose.pose.position.y, fk_pose.pose.position.z]
         return math.sqrt((translation[0] - target[0])**2
