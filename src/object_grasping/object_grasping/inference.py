@@ -23,7 +23,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 MODEL_WEIGHTS_PATH = '/home/parses/ros2_ws/src/object_grasping/object_grasping/Graspingv1.pth'
 # MODEL_WEIGHTS_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth'
 N_HISTORY          = 1    ## this script assumes history is just the latest state
-HIDDEN_DIM         = 450
+HIDDEN_DIM         = 500
 
 # Gripper threshold — above this the network predicts close
 GRIPPER_THRESHOLD  = 0.8
@@ -92,7 +92,8 @@ class UR3Inference(Node):
         # Image preprocessing to match training pipeline
         self.preprocess = v2.Compose([
             v2.ToImage(),
-            v2.Resize(224),
+            v2.Resize(256),
+            v2.CenterCrop(224),
             v2.ToDtype(torch.float32, scale=True),
             v2.Normalize(mean=[0.485, 0.456, 0.406],
                          std=[0.229, 0.224, 0.225]),
@@ -110,6 +111,9 @@ class UR3Inference(Node):
 
     def _get_latest_state(self):
         joint_state = self._moveit2.joint_state
+        if joint_state is None:
+            return None
+        
         arm_names = robot.joint_names()
         name_to_pos = dict(zip(joint_state.name, joint_state.position))
         positions = [name_to_pos[n] for n in arm_names]
@@ -132,19 +136,12 @@ class UR3Inference(Node):
     # ── Image ─────────────────────────────────────────────────────────────────
 
     def image_callback(self, msg: Image):
-        # self.get_logger().info("Received image")
-        # Convert ROS Image message to numpy then to tensor
         np_img = np.frombuffer(msg.data, dtype=np.uint8).reshape(
             msg.height, msg.width, -1)
-        # Handle encoding — drop alpha channel if present
-        if msg.encoding in ('rgba8', 'bgra8'):
-            np_img = np_img[:, :, :3]
-        if msg.encoding in ('bgr8', 'bgra8'):
-            np_img = np_img[:, :, ::-1].copy()
+        np_img = np_img[:, :, :3]
 
         with self.shared_state_lock:
             self.latest_image = np_img
-            # self.latest_image_time = rclpy.time.Time.from_msg(msg.header.stamp)
             self.latest_image_time = self.get_clock().now()
 
     # ── Inference ─────────────────────────────────────────────────────────────
@@ -170,17 +167,19 @@ class UR3Inference(Node):
                 
             if time_after_action is not None:
                 if image_time < time_after_action:
-                    # self.get_logger().info("Stale image, continuing")
                     time.sleep(0.01)
                     continue
 
-                
+            # Capture timestamp in nanoseconds for consistent file naming
+            timestamp_ns = image_time.nanoseconds
+
+            image_np_raw = image.copy()   # keep unprocessed copy for saving
             image = self.preprocess(image).unsqueeze(0)    # (1, 3, 224, 224)
 
             current_state = self._get_latest_state()
             if current_state is None:
-                self.get_logger().warn('Could not get latest state, aborting.')
-                return False
+                self.get_logger().warn('Could not get latest state, trying again.')
+                continue
 
             with torch.no_grad():
                 pred = self.model(image, current_state)
@@ -199,8 +198,6 @@ class UR3Inference(Node):
             current_position = current_state.squeeze()[0:3].numpy()
             current_orientation = current_state.squeeze()[3:7].numpy()
 
-            # Compose orientations: apply delta in world frame
-            # (matches training: r_delta = r_next * r_current.inv())
             r_current = Rotation.from_quat(current_orientation)
             r_delta   = Rotation.from_quat(delta_orientation)
             r_target  = r_delta * r_current
@@ -222,9 +219,7 @@ class UR3Inference(Node):
                 self.get_logger().error('Gripper action failed, aborting.')
                 return False
             
-            # self.time_after_action = self.get_clock().now()
             with self.shared_state_lock:
-                # self.time_after_action = self.latest_image_time
                 self.time_after_action = self.get_clock().now()
 
             # Check for task completion: gripper closed and delta is near zero
@@ -252,7 +247,6 @@ class UR3Inference(Node):
         future   = cli.call_async(Trigger.Request())
         deadline = time.time() + self.GRIPPER_TIMEOUT_SEC
         while not future.done():
-            # rclpy.spin_once(self, timeout_sec=0.05)
             time.sleep(0.05)
             if time.time() > deadline:
                 self.get_logger().error('Gripper service call timed out.')
@@ -315,7 +309,6 @@ class UR3Inference(Node):
             joint_names=robot.joint_names())
         self._moveit2.wait_until_executed()
 
-        # Only compare the arm joints, not gripper joints
         joint_state  = self._moveit2.joint_state
         arm_names    = robot.joint_names()
         name_to_pos  = dict(zip(joint_state.name, joint_state.position))
