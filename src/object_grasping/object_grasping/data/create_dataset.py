@@ -65,7 +65,7 @@ def add_gripper_column(csv_path: str, yaml_path: str,
 
 
 def find_target_index(df: pd.DataFrame, i: int,
-                       delta_t: float = 0.2,
+                       delta_t: float = 0.5,
                        position_threshold=0.001,
                        max_lookahead=50) -> int:
     """

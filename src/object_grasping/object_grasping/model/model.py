@@ -33,7 +33,7 @@ class PolicyNetwork(nn.Module):
 
         ## Feedforward layers
         encoder_output_dim = 512 * 2
-        ff_input_dim = encoder_output_dim + self.n_history * 8
+        ff_input_dim = encoder_output_dim + self.n_history * 7
 
         self.feedforward = nn.Sequential(
             nn.Linear(ff_input_dim, hidden_dim),
@@ -68,7 +68,7 @@ class PolicyNetwork(nn.Module):
 
 
 class PolicyNetworkLoss(nn.Module):
-    def __init__(self, position_weight=2, orientation_weight=2, gripper_weight=1):
+    def __init__(self, position_weight=1, orientation_weight=.2, gripper_weight=.8):
         super().__init__()
         self.position_weight = position_weight
         self.orientation_weight = orientation_weight
