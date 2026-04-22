@@ -64,23 +64,53 @@ def add_gripper_column(csv_path: str, yaml_path: str,
           f'({100 * sum(states) / len(states):.1f}%)')
 
 
-def find_target_index(df: pd.DataFrame, i: int, position_threshold=0.02) -> int:
-    """Assigns the target state as the nearest timestamp in the future where either the
-    gripper state has changed or the position of the end effector has changed by more than 0.01 meters"""
+def find_target_index(df: pd.DataFrame, i: int,
+                       delta_t: float = 0.2,
+                       position_threshold=0.001,
+                       max_lookahead=50) -> int:
+    """
+    Target = state ~delta_t seconds in the future.
+    If that state has no meaningful change, skip forward
+    until position or gripper changes.
+    """
 
-    current_position    = df.iloc[i][POSITION_COLS].to_numpy(dtype=np.float32)
+    current_time = df.iloc[i]['timestamp']
+    current_pos = df.iloc[i][POSITION_COLS].to_numpy(dtype=np.float32)
     current_gripper = df.iloc[i]['gripper']
 
-    target = i + 1
-    while target < len(df):
-        target_position    = df.iloc[target][POSITION_COLS].to_numpy(dtype=np.float32)
-        target_gripper = df.iloc[target]['gripper']
-        if target_gripper != current_gripper or \
-                np.linalg.norm(current_position - target_position) > position_threshold:
-            break
+    target_time = current_time + delta_t
+
+    # find first index >= target_time
+    target = i
+    while target < len(df) and df.iloc[target]['timestamp'] < target_time:
         target += 1
 
-    return -1 if target == len(df) else target
+    if target >= len(df):
+        return -1
+
+    # check if that state is meaningful
+    def is_meaningful(j):
+        pos = df.iloc[j][POSITION_COLS].to_numpy(dtype=np.float32)
+        gripper = df.iloc[j]['gripper']
+
+        return (
+            gripper != current_gripper or
+            np.linalg.norm(pos - current_pos) > position_threshold
+        )
+
+    # if not meaningful, skip forward
+    steps = 0
+    while target < len(df) - 1 and steps < max_lookahead:
+        if is_meaningful(target):
+            break
+        target += 1
+        steps += 1
+
+    # if we failed to find anything meaningful, invalidate
+    if target >= len(df):
+        return -1
+
+    return target
 
 
 def find_history_indices(df: pd.DataFrame, i: int,
