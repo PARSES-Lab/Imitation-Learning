@@ -38,7 +38,8 @@ class PolicyNetwork(nn.Module):
         self.feedforward = nn.Sequential(
             nn.Linear(ff_input_dim, hidden_dim),
             nn.ReLU(),
-            nn.Dropout(p=0.2),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
             nn.Linear(hidden_dim, 8)
         )
 
