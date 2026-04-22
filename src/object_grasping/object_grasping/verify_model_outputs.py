@@ -7,7 +7,7 @@ import torchvision.transforms.v2 as v2
 import numpy as np
 
 N_HISTORY = 1
-HIDDEN_DIM = 500
+HIDDEN_DIM = 270
 MODEL_WEIGHTS_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth'
 CONFIG_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/dataset_config.yaml'
 
@@ -81,7 +81,7 @@ with torch.no_grad():
 
     current_rotation = current_rotation.tolist()
     
-    latest_state = current_translation + current_rotation + [current_gripper]
+    latest_state = current_translation + current_rotation
     latest_state = torch.tensor(latest_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, 8)
 
     preds = model(image, latest_state)
@@ -125,7 +125,7 @@ with torch.no_grad():
 
     current_rotation = current_rotation.tolist()
     
-    latest_state = current_translation + current_rotation + [current_gripper]
+    latest_state = current_translation + current_rotation
     latest_state = torch.tensor(latest_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, 8)
 
     preds = model(image, latest_state)
@@ -169,7 +169,7 @@ with torch.no_grad():
 
     current_rotation = current_rotation.tolist()
     
-    latest_state = current_translation + current_rotation + [current_gripper]
+    latest_state = current_translation + current_rotation
     latest_state = torch.tensor(latest_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, 8)
 
     preds = model(image, latest_state)
@@ -214,7 +214,7 @@ with torch.no_grad():
 
     current_rotation = current_rotation.tolist()
     
-    latest_state = current_translation + current_rotation + [current_gripper]
+    latest_state = current_translation + current_rotation
     latest_state = torch.tensor(latest_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, 8)
 
     preds = model(image, latest_state)

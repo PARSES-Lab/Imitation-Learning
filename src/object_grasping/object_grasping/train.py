@@ -201,7 +201,6 @@ def load_dataset_from_yaml(config_path, n_history) -> ConcatDataset:
 
 def train_and_save(
         hidden_dim = 256,
-        batch_size = 32,
         lr = 0.0015
 ):
     dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
@@ -210,8 +209,8 @@ def train_and_save(
     print(f'Using {device}')
 
     training_set, validation_set = random_split(dataset, [0.85, 0.15])
-    train_loader = DataLoader(training_set, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
-    validation_loader = DataLoader(validation_set, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
+    train_loader = DataLoader(training_set, batch_size=64, shuffle=True, num_workers=12, pin_memory=True)
+    validation_loader = DataLoader(validation_set, batch_size=64, shuffle=True, num_workers=12, pin_memory=True)
 
     model = PolicyNetwork(n_history=N_HISTORY, hidden_dim=hidden_dim).to(device)
     loss_fn = PolicyNetworkLoss().to(device)
@@ -344,53 +343,52 @@ def objective(trial: optuna.Trial) -> float:
 
         if trial.should_prune():
             raise optuna.exceptions.TrialPruned()
-    
+
     return validation_loss
     
 
 if __name__ == '__main__':
-    study = optuna.create_study(
-        direction='minimize',
-        pruner=optuna.pruners.MedianPruner(),
-        study_name='imitation_learning'
-    )
+    # study = optuna.create_study(
+    #     direction='minimize',
+    #     pruner=optuna.pruners.MedianPruner(),
+    #     study_name='imitation_learning'
+    # )
 
-    dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
+    # dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
 
-    study.optimize(objective, n_trials=30, show_progress_bar=True)
+    # study.optimize(objective, n_trials=30, show_progress_bar=True)
 
-    pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
-    complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+    # pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    # complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
 
-    print("Study statistics: ")
-    print("  Number of finished trials: ", len(study.trials))
-    print("  Number of pruned trials: ", len(pruned_trials))
-    print("  Number of complete trials: ", len(complete_trials))
+    # print("Study statistics: ")
+    # print("  Number of finished trials: ", len(study.trials))
+    # print("  Number of pruned trials: ", len(pruned_trials))
+    # print("  Number of complete trials: ", len(complete_trials))
 
-    print("Best trial:")
-    trial = study.best_trial
+    # print("Best trial:")
+    # trial = study.best_trial
 
-    print("  Value: ", trial.value)
+    # print("  Value: ", trial.value)
 
-    print("  Params: ")
-    for key, value in trial.params.items():
-        print("    {}: {}".format(key, value))
-
-
-    fig_importance = plot_param_importances(study)
-    fig_history = plot_optimization_history(study)
-
-    fig_importance.show()
-    fig_history.show()
-
-    fig_importance.write_html('param_importances_nhistory1.html')
-    fig_history.write_html('optimization_history_nhistory1.html')
+    # print("  Params: ")
+    # for key, value in trial.params.items():
+    #     print("    {}: {}".format(key, value))
 
 
-    train_and_save(trial.params['hidden_dim'], trial.params['batch_size'], trial.params['lr'])
+    # fig_importance = plot_param_importances(study)
+    # fig_history = plot_optimization_history(study)
+
+    # fig_importance.show()
+    # fig_history.show()
+
+    # fig_importance.write_html('param_importances_nhistory1.html')
+    # fig_history.write_html('optimization_history_nhistory1.html')
 
 
-    # hidden_dim = 200
-    # batch_size = 64
-    # lr = 0.001
-    # train_and_save(hidden_dim, batch_size, lr)
+    # train_and_save(trial.params['hidden_dim'], trial.params['lr'])
+
+
+    hidden_dim = 270
+    lr = 0.00045
+    train_and_save(hidden_dim, lr)
