@@ -33,6 +33,21 @@ def quaternion_delta(q_current: np.ndarray, q_next: np.ndarray) -> np.ndarray:
     
     return delta_quat
 
+def add_quaternions(q_current: np.ndarray, q_delta: np.ndarray) -> np.ndarray:
+    r_current = Rotation.from_quat(q_current)
+    r_delta = Rotation.from_quat(q_delta)
+
+    # Compose rotations
+    r_new = r_delta * r_current
+
+    q_new = r_new.as_quat()
+
+    # Enforce consistent sign convention
+    if q_new[3] < 0:
+        q_new = -q_new
+
+    return q_new
+
 
 class SingleDemoDataset(Dataset):
     def __init__(self, dataset_csv_path, targets_csv_path, image_dir, n_history):
@@ -74,6 +89,31 @@ class SingleDemoDataset(Dataset):
 
     def __len__(self):
         return len(self.targets_df)
+
+    def pose_noise(self, indices):
+        noisy_poses = []
+
+        for idx in indices:
+            pose = self.dataset_df.iloc[idx][POSE_COLS].to_numpy(dtype=np.float32).copy()
+
+            # Position noise
+            pos_noise = np.random.normal(0.0, 0.005, size=3)
+            pos_noise = np.clip(pos_noise, -0.01, 0.01)
+            pose[:3] += pos_noise
+
+            # Rotation noise
+            axis = np.random.normal(size=3)
+            axis /= np.linalg.norm(axis) + 1e-8
+            angle = np.random.normal(0.0, np.deg2rad(1.5))
+            angle = np.clip(angle, -np.deg2rad(3), np.deg2rad(3))
+
+            r_noise = Rotation.from_rotvec(axis * angle)
+
+            pose[3:7] = add_quaternions(pose[3:7], r_noise.as_quat())
+            noisy_poses.append(pose)
+
+        return np.stack(noisy_poses)
+    
     
     def __getitem__(self, index):
         sample = self.targets_df.iloc[index]
@@ -81,11 +121,11 @@ class SingleDemoDataset(Dataset):
         target_idx = sample['target_idx']
         history  = sample[[f'history_{j}' for j in range(self.n_history)]].values
 
+        history_list = self.pose_noise(history)
+        history_vector = torch.tensor(history_list, dtype=torch.float32)
+
         image = torch.load(self.image_dir / Path(self.dataset_df.iloc[current_idx]['image']).with_suffix('.pt'))
         image = self.augmentation(image)
-
-        history_list = self.dataset_df.iloc[history][POSE_GRIPPER_COLS].to_numpy(dtype=np.float32)
-        history_vector = torch.tensor(history_list, dtype=torch.float32)
 
         current_pose = self.dataset_df.iloc[current_idx][POSE_COLS].to_numpy(dtype=np.float32)
         target_pose = self.dataset_df.iloc[target_idx][POSE_COLS].to_numpy(dtype=np.float32)
