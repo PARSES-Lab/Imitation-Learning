@@ -7,7 +7,7 @@ import torchvision.transforms.v2 as v2
 import numpy as np
 
 N_HISTORY = 1
-HIDDEN_DIM = 270
+HIDDEN_DIM = 160
 MODEL_WEIGHTS_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth'
 CONFIG_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/dataset_config.yaml'
 
@@ -64,6 +64,7 @@ with torch.no_grad():
     preprocess = v2.Compose([
             v2.ToImage(),
             v2.Resize(224),
+            v2.CenterCrop(224),
             v2.ToDtype(torch.float32, scale=True),
             v2.Normalize(mean=[0.485, 0.456, 0.406],
                          std=[0.229, 0.224, 0.225]),
@@ -81,7 +82,7 @@ with torch.no_grad():
 
     current_rotation = current_rotation.tolist()
     
-    latest_state = current_translation + current_rotation
+    latest_state = current_translation + current_rotation + [current_gripper]
     latest_state = torch.tensor(latest_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, 8)
 
     preds = model(image, latest_state)
@@ -125,7 +126,7 @@ with torch.no_grad():
 
     current_rotation = current_rotation.tolist()
     
-    latest_state = current_translation + current_rotation
+    latest_state = current_translation + current_rotation + [current_gripper]
     latest_state = torch.tensor(latest_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, 8)
 
     preds = model(image, latest_state)
@@ -169,7 +170,7 @@ with torch.no_grad():
 
     current_rotation = current_rotation.tolist()
     
-    latest_state = current_translation + current_rotation
+    latest_state = current_translation + current_rotation + [current_gripper]
     latest_state = torch.tensor(latest_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, 8)
 
     preds = model(image, latest_state)
@@ -214,7 +215,7 @@ with torch.no_grad():
 
     current_rotation = current_rotation.tolist()
     
-    latest_state = current_translation + current_rotation
+    latest_state = current_translation + current_rotation + [current_gripper]
     latest_state = torch.tensor(latest_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, 8)
 
     preds = model(image, latest_state)
