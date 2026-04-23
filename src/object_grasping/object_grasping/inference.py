@@ -132,10 +132,7 @@ class UR3Inference(Node):
             fk_pose.pose.orientation.w,
         ]
 
-        latest_state = translation + rotation + [gripper]
-        return (
-            torch.tensor(latest_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-        )  # (1, 1, 8)
+        return translation, rotation, gripper
 
     # ── Image ─────────────────────────────────────────────────────────────────
 
@@ -183,8 +180,10 @@ class UR3Inference(Node):
                 self.get_logger().warn("Could not get latest state, trying again.")
                 continue
 
+            translation, rotation, gripper = current_state
+
             with torch.no_grad():
-                pred = self.model(image, current_state)
+                pred = self.model(image, torch.tensor(translation + [gripper], dtype=torch.float32).unsqueeze(0).unsqueeze(0))
 
             delta_position = pred["delta_position"][0].numpy() / 100  # (3,)
             gripper_logit = pred["gripper_state"][0].item()
@@ -193,16 +192,15 @@ class UR3Inference(Node):
                 if torch.sigmoid(torch.tensor(gripper_logit)) > GRIPPER_THRESHOLD
                 else Gripper.OPEN
             )
+            
+            translation = np.array(translation)
 
-            current_position = current_state.squeeze()[0:3].numpy()
-            current_orientation = current_state.squeeze()[3:7].numpy()
-
-            target_position = current_position + delta_position
+            target_position = translation + delta_position
 
             # Move arm
             move_success = self.move(
                 position=target_position.tolist(),
-                orientation=current_orientation.tolist(),
+                orientation=rotation,
             )
             if not move_success:
                 self.get_logger().error("Move failed, aborting.")
@@ -346,10 +344,10 @@ def main():
     node.add_obstacle("wall", size=[0.02, 2.00, 2.0], position=[0.15, 0.0, 0.0])
     node.add_obstacle("bar", size=[0.05, 0.05, 2.5], position=[0.1, -0.1, 0.0])
 
-    home_success = node.move_to_home()
-    if not home_success:
-        rclpy.shutdown()
-        return
+    # home_success = node.move_to_home()
+    # if not home_success:
+    #     rclpy.shutdown()
+    #     return
 
     node.run_task()
     rclpy.shutdown()
