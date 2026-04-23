@@ -12,41 +12,13 @@ import optuna
 from optuna.visualization import plot_param_importances, plot_optimization_history, plot_contour
 from optuna.trial import TrialState
 
-POSE_COLS = ['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw']
-POSE_GRIPPER_COLS = ['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'gripper']
+POSE_COLS = ['x', 'y', 'z']
+POSE_GRIPPER_COLS = ['x', 'y', 'z', 'gripper']
 CONFIG_PATH='/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/dataset_config.yaml'
 N_HISTORY = 1
 EPOCHS = 40
 
 dataset = None
-
-
-def quaternion_delta(q_current: np.ndarray, q_next: np.ndarray) -> np.ndarray:
-    r_current = Rotation.from_quat(q_current)
-    r_next = Rotation.from_quat(q_next)
-    r_delta = r_next * r_current.inv()
-    delta_quat = r_delta.as_quat()
-
-    # Enforce consistent sign
-    if delta_quat[3] < 0:  # qw < 0
-        delta_quat = -delta_quat
-    
-    return delta_quat
-
-def add_quaternions(q_current: np.ndarray, q_delta: np.ndarray) -> np.ndarray:
-    r_current = Rotation.from_quat(q_current)
-    r_delta = Rotation.from_quat(q_delta)
-
-    # Compose rotations
-    r_new = r_delta * r_current
-
-    q_new = r_new.as_quat()
-
-    # Enforce consistent sign convention
-    if q_new[3] < 0:
-        q_new = -q_new
-
-    return q_new
 
 
 class SingleDemoDataset(Dataset):
@@ -55,14 +27,6 @@ class SingleDemoDataset(Dataset):
         self.targets_df = pd.read_csv(targets_csv_path)
         self.image_dir = Path(image_dir)
         self.n_history = n_history
-
-        ## Set positive convention for quaternions
-        qw_negative = self.dataset_df["qw"] < 0
-        self.dataset_df.loc[qw_negative, ["qx", "qy", "qz", "qw"]] *= -1
-
-        # print(self.dataset_df[0:10])
-
-        # print(self.dataset_df[POSE_GRIPPER_COLS].agg(['min', 'max', 'mean']))
 
         self.augmentation = v2.Compose([
             v2.ToDtype(torch.float32, scale=True),
@@ -108,10 +72,6 @@ class SingleDemoDataset(Dataset):
 
 
         delta_position = target_pose[:3] - current_pose[:3]
-        delta_orientation = quaternion_delta(
-            current_pose[3:7],
-            target_pose[3:7]
-        )
 
         gripper_state = float(self.dataset_df.iloc[target_idx]['gripper'])
 
@@ -119,7 +79,6 @@ class SingleDemoDataset(Dataset):
             'image': image,
             'history': current_pose,
             'delta_position': torch.tensor(delta_position, dtype=torch.float32) * 100,
-            'delta_orientation': torch.tensor(delta_orientation, dtype=torch.float32),
             'gripper_state': torch.tensor([gripper_state], dtype=torch.float32),
         }
     
@@ -187,7 +146,6 @@ def train_and_save(
             history = batch['history'].to(device)
             target = {
                 'delta_position': batch['delta_position'].to(device),
-                'delta_orientation': batch['delta_orientation'].to(device),
                 'gripper_state': batch['gripper_state'].to(device)
             }
 
@@ -210,7 +168,6 @@ def train_and_save(
             history = batch['history'].to(device)
             target = {
                 'delta_position': batch['delta_position'].to(device),
-                'delta_orientation': batch['delta_orientation'].to(device),
                 'gripper_state': batch['gripper_state'].to(device)
             }
             preds = model(image, history)
@@ -231,7 +188,6 @@ def train_and_save(
             history = batch['history'].to(device)
             target = {
                 'delta_position': batch['delta_position'].to(device),
-                'delta_orientation': batch['delta_orientation'].to(device),
                 'gripper_state': batch['gripper_state'].to(device)
             }
             preds = model(image, history)
@@ -269,7 +225,6 @@ def objective(trial: optuna.Trial) -> float:
             history = batch['history'].to(device)
             target = {
                 'delta_position': batch['delta_position'].to(device),
-                'delta_orientation': batch['delta_orientation'].to(device),
                 'gripper_state': batch['gripper_state'].to(device)
             }
 
@@ -290,7 +245,6 @@ def objective(trial: optuna.Trial) -> float:
                 history = batch['history'].to(device)
                 target = {
                     'delta_position': batch['delta_position'].to(device),
-                    'delta_orientation': batch['delta_orientation'].to(device),
                     'gripper_state': batch['gripper_state'].to(device)
                 }
                 preds = model(image, history)

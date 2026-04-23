@@ -20,10 +20,10 @@ from dataclasses import dataclass
 import threading
 from rclpy.callback_groups import ReentrantCallbackGroup
 
-MODEL_WEIGHTS_PATH = '/home/parses/ros2_ws/src/object_grasping/object_grasping/Graspingv1.pth'
+MODEL_WEIGHTS_PATH = '/home/parses/ros2_ws/src/object_grasping/object_grasping/Graspingv6.pth'
 # MODEL_WEIGHTS_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth'
 N_HISTORY          = 1    ## this script assumes history is just the latest state
-HIDDEN_DIM         = 500
+HIDDEN_DIM         = 200
 
 # Gripper threshold — above this the network predicts close
 GRIPPER_THRESHOLD  = 0.8
@@ -104,8 +104,6 @@ class UR3Inference(Node):
         state_dict = torch.load(MODEL_WEIGHTS_PATH, weights_only=True, map_location=torch.device('cpu'))
         self.model.load_state_dict(state_dict)
 
-        self._tf_buffer   = Buffer()
-        self._tf_listener = TransformListener(self._tf_buffer, self)
         self.get_logger().info("UR3Inference ready.")
 
 
@@ -122,12 +120,6 @@ class UR3Inference(Node):
         gripper = 1.0 if self.current_gripper_state == Gripper.CLOSE else 0.0
         translation = [fk_pose.pose.position.x, fk_pose.pose.position.y, fk_pose.pose.position.z]
         rotation = [fk_pose.pose.orientation.x, fk_pose.pose.orientation.y, fk_pose.pose.orientation.z, fk_pose.pose.orientation.w]
-
-        rotation = np.array(rotation)
-        if rotation[3] < 0:
-            rotation *= -1
-
-        rotation = rotation.tolist()
             
         latest_state = translation + rotation + [gripper]
         return torch.tensor(latest_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, 8)
@@ -181,29 +173,19 @@ class UR3Inference(Node):
                 pred = self.model(image, current_state)
 
             delta_position    = pred['delta_position'][0].numpy() / 100     # (3,)
-            delta_orientation = pred['delta_orientation'][0].numpy()  # (4,) xyzw
             gripper_logit     = pred['gripper_state'][0].item()
             target_gripper    = Gripper.CLOSE if torch.sigmoid(torch.tensor(gripper_logit)) > GRIPPER_THRESHOLD else Gripper.OPEN
 
-            delta_orientation = delta_orientation / np.linalg.norm(delta_orientation)
-            
-            ## enforce positive quaternion convention
-            if delta_orientation[3] < 0:
-                delta_orientation *= -1
 
             current_position = current_state.squeeze()[0:3].numpy()
             current_orientation = current_state.squeeze()[3:7].numpy()
 
-            r_current = Rotation.from_quat(current_orientation)
-            r_delta   = Rotation.from_quat(delta_orientation)
-            r_target  = r_delta * r_current
-            target_orientation = r_target.as_quat()             # xyzw
             target_position    = current_position + delta_position
 
             # Move arm
             move_success = self.move(
                 position=target_position.tolist(),
-                orientation=target_orientation.tolist(),
+                orientation=current_orientation.tolist(),
             )
             if not move_success:
                 self.get_logger().error('Move failed, aborting.')
