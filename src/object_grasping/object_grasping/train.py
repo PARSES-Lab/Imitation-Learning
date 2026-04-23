@@ -9,7 +9,7 @@ from scipy.spatial.transform import Rotation
 from pathlib import Path
 import yaml
 import optuna
-from optuna.visualization import plot_param_importances, plot_optimization_history
+from optuna.visualization import plot_param_importances, plot_optimization_history, plot_contour
 from optuna.trial import TrialState
 
 POSE_COLS = ['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw']
@@ -339,12 +339,15 @@ if __name__ == '__main__':
 
     fig_importance = plot_param_importances(study)
     fig_history = plot_optimization_history(study)
+    fig_contour = plot_contour(study, params=["lr", "hidden_dim"])
 
     fig_importance.show()
     fig_history.show()
+    fig_contour.show()
 
-    fig_importance.write_html('param_importances_nhistory1.html')
-    fig_history.write_html('optimization_history_nhistory1.html')
+    fig_importance.write_html('plots/param_importances_no_orientations.html')
+    fig_history.write_html('plots/optimization_history_no_orientations.html')
+    fig_contour.write_html('plots/contour.html')
 
 
     train_and_save(trial.params['hidden_dim'], trial.params['lr'])
