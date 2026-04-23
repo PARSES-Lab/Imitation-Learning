@@ -170,10 +170,6 @@ class UR3Inference(Node):
                     time.sleep(0.01)
                     continue
 
-            # Capture timestamp in nanoseconds for consistent file naming
-            timestamp_ns = image_time.nanoseconds
-
-            image_np_raw = image.copy()   # keep unprocessed copy for saving
             image = self.preprocess(image).unsqueeze(0)    # (1, 3, 224, 224)
 
             current_state = self._get_latest_state()
@@ -223,11 +219,11 @@ class UR3Inference(Node):
                 self.time_after_action = self.get_clock().now()
 
             # Check for task completion: gripper closed and delta is near zero
-            position_delta_norm = np.linalg.norm(delta_position)
-            if (target_gripper == Gripper.CLOSE
-                    and position_delta_norm < self.TOLERANCE):
-                self.get_logger().info('Task complete.')
-                return True
+            # position_delta_norm = np.linalg.norm(delta_position)
+            # if (target_gripper == Gripper.CLOSE
+            #         and position_delta_norm < self.TOLERANCE):
+            #     self.get_logger().info('Task complete.')
+            #     return True
         
 
     # ── Motion ────────────────────────────────────────────────────────────────

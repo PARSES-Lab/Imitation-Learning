@@ -89,31 +89,6 @@ class SingleDemoDataset(Dataset):
 
     def __len__(self):
         return len(self.targets_df)
-
-    def pose_noise(self, pose: np.ndarray) -> np.ndarray:
-        pose = pose.copy()
-
-        # -------------------
-        # Position noise (≤1 cm)
-        # -------------------
-        pos_noise = np.random.normal(0.0, 0.005, size=3)
-        pos_noise = np.clip(pos_noise, -0.01, 0.01)
-        pose[:3] += pos_noise
-
-        # -------------------
-        # Rotation noise (≤3 deg)
-        # -------------------
-        axis = np.random.normal(size=3)
-        axis /= np.linalg.norm(axis) + 1e-8
-
-        angle = np.random.normal(0.0, np.deg2rad(1.5))
-        angle = np.clip(angle, -np.deg2rad(3), np.deg2rad(3))
-
-        r_noise = Rotation.from_rotvec(axis * angle)
-
-        pose[3:7] = add_quaternions(pose[3:7], r_noise.as_quat())
-
-        return pose
     
     
     def __getitem__(self, index):
@@ -121,42 +96,28 @@ class SingleDemoDataset(Dataset):
         current_idx = sample['current_idx']
         target_idx = sample['target_idx']
 
-        # -------------------
-        # Image
-        # -------------------
         image = torch.load(
             self.image_dir /
             Path(self.dataset_df.iloc[current_idx]['image']).with_suffix('.pt')
         )
         image = self.augmentation(image)
 
-        # -------------------
-        # Current + target poses
-        # -------------------
-        current_pose = self.dataset_df.iloc[current_idx][POSE_COLS].to_numpy(dtype=np.float32)
-        target_pose = self.dataset_df.iloc[target_idx][POSE_COLS].to_numpy(dtype=np.float32)
+        
+        current_pose = self.dataset_df.iloc[current_idx][POSE_GRIPPER_COLS].to_numpy(dtype=np.float32)
+        target_pose = self.dataset_df.iloc[target_idx][POSE_GRIPPER_COLS].to_numpy(dtype=np.float32)
 
-        # -------------------
-        # Apply noise to current pose (THIS is your history input)
-        # -------------------
-        noisy_current_pose = self.pose_noise(current_pose)
 
-        history_vector = torch.tensor(noisy_current_pose, dtype=torch.float32)
-
-        # -------------------
-        # Targets (clean target pose)
-        # -------------------
-        delta_position = target_pose[:3] - noisy_current_pose[:3]
+        delta_position = target_pose[:3] - current_pose[:3]
         delta_orientation = quaternion_delta(
-            noisy_current_pose[3:],
-            target_pose[3:]
+            current_pose[3:7],
+            target_pose[3:7]
         )
 
         gripper_state = float(self.dataset_df.iloc[target_idx]['gripper'])
 
         return {
             'image': image,
-            'history': history_vector,
+            'history': current_pose,
             'delta_position': torch.tensor(delta_position, dtype=torch.float32) * 100,
             'delta_orientation': torch.tensor(delta_orientation, dtype=torch.float32),
             'gripper_state': torch.tensor([gripper_state], dtype=torch.float32),
@@ -287,8 +248,8 @@ def objective(trial: optuna.Trial) -> float:
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    learning_rate = trial.suggest_float('lr', 1e-4, 1e-1, log=True)
-    hidden_dim = trial.suggest_int('hidden_dim', low=100, high=500, step=10)
+    learning_rate = trial.suggest_float('lr', 1e-5, 1e-1, log=True)
+    hidden_dim = trial.suggest_int('hidden_dim', low=30, high=200, step=10)
 
     training_set, validation_set = random_split(dataset, [0.85, 0.15])
     train_loader = DataLoader(training_set, batch_size=64, shuffle=True, num_workers=12, pin_memory=True)
@@ -348,47 +309,47 @@ def objective(trial: optuna.Trial) -> float:
     
 
 if __name__ == '__main__':
-    # study = optuna.create_study(
-    #     direction='minimize',
-    #     pruner=optuna.pruners.MedianPruner(),
-    #     study_name='imitation_learning'
-    # )
+    study = optuna.create_study(
+        direction='minimize',
+        pruner=optuna.pruners.MedianPruner(),
+        study_name='imitation_learning'
+    )
 
-    # dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
+    dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
 
-    # study.optimize(objective, n_trials=30, show_progress_bar=True)
+    study.optimize(objective, n_trials=30, show_progress_bar=True)
 
-    # pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
-    # complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+    pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
 
-    # print("Study statistics: ")
-    # print("  Number of finished trials: ", len(study.trials))
-    # print("  Number of pruned trials: ", len(pruned_trials))
-    # print("  Number of complete trials: ", len(complete_trials))
+    print("Study statistics: ")
+    print("  Number of finished trials: ", len(study.trials))
+    print("  Number of pruned trials: ", len(pruned_trials))
+    print("  Number of complete trials: ", len(complete_trials))
 
-    # print("Best trial:")
-    # trial = study.best_trial
+    print("Best trial:")
+    trial = study.best_trial
 
-    # print("  Value: ", trial.value)
+    print("  Value: ", trial.value)
 
-    # print("  Params: ")
-    # for key, value in trial.params.items():
-    #     print("    {}: {}".format(key, value))
-
-
-    # fig_importance = plot_param_importances(study)
-    # fig_history = plot_optimization_history(study)
-
-    # fig_importance.show()
-    # fig_history.show()
-
-    # fig_importance.write_html('param_importances_nhistory1.html')
-    # fig_history.write_html('optimization_history_nhistory1.html')
+    print("  Params: ")
+    for key, value in trial.params.items():
+        print("    {}: {}".format(key, value))
 
 
-    # train_and_save(trial.params['hidden_dim'], trial.params['lr'])
+    fig_importance = plot_param_importances(study)
+    fig_history = plot_optimization_history(study)
+
+    fig_importance.show()
+    fig_history.show()
+
+    fig_importance.write_html('param_importances_nhistory1.html')
+    fig_history.write_html('optimization_history_nhistory1.html')
 
 
-    hidden_dim = 270
-    lr = 0.00045
-    train_and_save(hidden_dim, lr)
+    train_and_save(trial.params['hidden_dim'], trial.params['lr'])
+
+
+    # hidden_dim = 270
+    # lr = 0.00045
+    # train_and_save(hidden_dim, lr)
