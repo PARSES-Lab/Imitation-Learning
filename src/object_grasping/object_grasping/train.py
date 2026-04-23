@@ -241,7 +241,7 @@ def train_and_save(
     validation_loss = np.mean(val_losses)
     print(f"Validation loss: {validation_loss}")
 
-    torch.save(model.state_dict(), '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth')
+    torch.save(model.state_dict(), '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv6.pth')
 
 
 def objective(trial: optuna.Trial) -> float:
@@ -309,50 +309,50 @@ def objective(trial: optuna.Trial) -> float:
     
 
 if __name__ == '__main__':
-    study = optuna.create_study(
-        direction='minimize',
-        pruner=optuna.pruners.MedianPruner(),
-        study_name='imitation_learning'
-    )
+    # study = optuna.create_study(
+    #     direction='minimize',
+    #     pruner=optuna.pruners.MedianPruner(),
+    #     study_name='imitation_learning'
+    # )
 
-    dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
+    # dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
 
-    study.optimize(objective, n_trials=30, show_progress_bar=True)
+    # study.optimize(objective, n_trials=30, show_progress_bar=True)
 
-    pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
-    complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+    # pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    # complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
 
-    print("Study statistics: ")
-    print("  Number of finished trials: ", len(study.trials))
-    print("  Number of pruned trials: ", len(pruned_trials))
-    print("  Number of complete trials: ", len(complete_trials))
+    # print("Study statistics: ")
+    # print("  Number of finished trials: ", len(study.trials))
+    # print("  Number of pruned trials: ", len(pruned_trials))
+    # print("  Number of complete trials: ", len(complete_trials))
 
-    print("Best trial:")
-    trial = study.best_trial
+    # print("Best trial:")
+    # trial = study.best_trial
 
-    print("  Value: ", trial.value)
+    # print("  Value: ", trial.value)
 
-    print("  Params: ")
-    for key, value in trial.params.items():
-        print("    {}: {}".format(key, value))
-
-
-    fig_importance = plot_param_importances(study)
-    fig_history = plot_optimization_history(study)
-    fig_contour = plot_contour(study, params=["lr", "hidden_dim"])
-
-    fig_importance.show()
-    fig_history.show()
-    fig_contour.show()
-
-    fig_importance.write_html('plots/param_importances_no_orientations.html')
-    fig_history.write_html('plots/optimization_history_no_orientations.html')
-    fig_contour.write_html('plots/contour.html')
+    # print("  Params: ")
+    # for key, value in trial.params.items():
+    #     print("    {}: {}".format(key, value))
 
 
-    train_and_save(trial.params['hidden_dim'], trial.params['lr'])
+    # fig_importance = plot_param_importances(study)
+    # fig_history = plot_optimization_history(study)
+    # fig_contour = plot_contour(study, params=["lr", "hidden_dim"])
+
+    # fig_importance.show()
+    # fig_history.show()
+    # fig_contour.show()
+
+    # fig_importance.write_html('plots/param_importances_no_orientations.html')
+    # fig_history.write_html('plots/optimization_history_no_orientations.html')
+    # fig_contour.write_html('plots/contour.html')
 
 
-    # hidden_dim = 270
-    # lr = 0.00045
-    # train_and_save(hidden_dim, lr)
+    # train_and_save(trial.params['hidden_dim'], trial.params['lr'])
+
+
+    hidden_dim = 200
+    lr = 0.0018
+    train_and_save(hidden_dim, lr)
