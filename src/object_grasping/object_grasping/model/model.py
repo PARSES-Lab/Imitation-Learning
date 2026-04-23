@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from .spatial_softmax import SpatialSoftArgmax
 import torchvision.models as models
-import torch.nn.functional as F
 
 class PolicyNetwork(nn.Module):
     def __init__(self, n_history, hidden_dim):
@@ -58,7 +57,7 @@ class PolicyNetwork(nn.Module):
 
         return {
             'delta_position': output[:, :3],
-            'gripper_state': output[:, 7:8]
+            'gripper_state': output[:, 3:4]
         }
     
     def trainable_parameters(self):
