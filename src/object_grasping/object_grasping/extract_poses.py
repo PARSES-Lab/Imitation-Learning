@@ -1,24 +1,29 @@
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import JointState
-from pymoveit2.robots import ur as robot
 import csv
-from pymoveit2 import MoveIt2
-from rclpy.callback_groups import ReentrantCallbackGroup
 from threading import Thread
 
+import rclpy
+from pymoveit2.robots import ur as robot
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.node import Node
+from sensor_msgs.msg import JointState
 
-TEMP_FILE = 'tmp_joint_states.csv'
-OUTPUT_FILE = 'poses.csv'
+from pymoveit2 import MoveIt2
+
+TEMP_FILE = "tmp_joint_states.csv"
+OUTPUT_FILE = "poses.csv"
 
 
 class JointStateCollector(Node):
+    """Subcribes to joint_states ros2 topic and saves with timestamps to temporary csv."""
+
     def __init__(self):
-        super().__init__('joint_state_collector')
-        self.sub = self.create_subscription(JointState, '/joint_states', self.callback, 10)
-        self.csv_file = open(TEMP_FILE, 'w', newline='')
+        super().__init__("joint_state_collector")
+        self.sub = self.create_subscription(
+            JointState, "/joint_states", self.callback, 10
+        )
+        self.csv_file = open(TEMP_FILE, "w", newline="")
         self.writer = csv.writer(self.csv_file)
-        self.writer.writerow(['timestamp'] + robot.joint_names())
+        self.writer.writerow(["timestamp"] + robot.joint_names())
         self.count = 0
 
     def callback(self, msg: JointState):
@@ -27,7 +32,7 @@ class JointStateCollector(Node):
             return
         positions = [name_to_pos[n] for n in robot.joint_names()]
         ts = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-        self.writer.writerow([f'{ts:.6f}'] + positions)
+        self.writer.writerow([f"{ts:.6f}"] + positions)
         self.count += 1
 
     def close(self):
@@ -36,8 +41,10 @@ class JointStateCollector(Node):
 
 
 class FKProcessor(Node):
+    """Converts joint positions in cvs format to end effector positions and saves to csv."""
+
     def __init__(self):
-        super().__init__('fk_processor')
+        super().__init__("fk_processor")
 
         cb_group = ReentrantCallbackGroup()
         self._moveit2 = MoveIt2(
@@ -55,10 +62,13 @@ class FKProcessor(Node):
         self._executor_thread.start()
 
     def process(self):
-        with open(TEMP_FILE, 'r') as infile, open(OUTPUT_FILE, 'w', newline='') as outfile:
+        with (
+            open(TEMP_FILE, "r") as infile,
+            open(OUTPUT_FILE, "w", newline="") as outfile,
+        ):
             reader = csv.DictReader(infile)
             writer = csv.writer(outfile)
-            writer.writerow(['timestamp', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw'])
+            writer.writerow(["timestamp", "x", "y", "z", "qx", "qy", "qz", "qw"])
 
             rows = list(reader)
             self.get_logger().info(f"Processing {len(rows)} joint states...")
@@ -69,10 +79,12 @@ class FKProcessor(Node):
                 if fk_pose is not None:
                     t = fk_pose.pose.position
                     r = fk_pose.pose.orientation
-                    writer.writerow([row['timestamp'], t.x, t.y, t.z, r.x, r.y, r.z, r.w])
+                    writer.writerow(
+                        [row["timestamp"], t.x, t.y, t.z, r.x, r.y, r.z, r.w]
+                    )
                 else:
                     self.get_logger().warn(f"FK returned None for row {i}")
-                
+
                 if i % 100 == 0:
                     self.get_logger().info(f"Wrote to row {i}")
 
