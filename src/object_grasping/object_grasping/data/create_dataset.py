@@ -96,7 +96,7 @@ def assign_targets(
             target += 1
 
         if target >= len(df):
-            targets.append(-1)
+            targets.append(len(df) - 1)
             continue
 
         # check if that state is meaningful
@@ -117,9 +117,9 @@ def assign_targets(
             target += 1
             steps += 1
 
-        # if we failed to find anything meaningful, invalidate
+        # if we failed to find anything meaningful, clamp to final index
         if target >= len(df):
-            targets.append(-1)
+            targets.append(len(df) - 1)
             continue
 
         targets.append(target)
