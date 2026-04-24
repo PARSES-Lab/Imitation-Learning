@@ -29,18 +29,18 @@ class SingleDemoDataset(Dataset):
             v2.ToDtype(torch.float32, scale=True),
             v2.RandomResizedCrop(
                 size=(224, 224),
-                scale=(0.9, 1.0),   # crop between 90% and 100% of the image area
-                ratio=(0.9, 1.1),   # keep roughly square
+                scale=(0.95, 1.0),   # crop between 90% and 100% of the image area
+                ratio=(0.95, 1.05),   # keep roughly square
             ),
             v2.RandomAffine(
                 degrees=4,
                 translate=(0.05, 0.05)
             ),
             v2.ColorJitter(
-                brightness=0.1,
-                contrast=0.1,
-                saturation=0.1,
-                hue=0.05
+                brightness=0.02,
+                contrast=0.02,
+                saturation=0.02,
+                hue=0.01
             ),
             v2.Normalize(
                 mean=[0.485, 0.456, 0.406], 
@@ -288,4 +288,4 @@ if __name__ == '__main__':
 
     hidden_dim = 200
     lr = 0.002
-    train_and_save(hidden_dim, lr, '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/Graspingv7.pth')
+    train_and_save(hidden_dim, lr, '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/Graspingv7a.pth')
