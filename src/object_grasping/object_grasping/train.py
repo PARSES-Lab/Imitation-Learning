@@ -15,18 +15,15 @@ from optuna.trial import TrialState
 POSE_COLS = ['x', 'y', 'z']
 POSE_GRIPPER_COLS = ['x', 'y', 'z', 'gripper']
 CONFIG_PATH='/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/dataset_config.yaml'
-N_HISTORY = 1
 EPOCHS = 40
 
 dataset = None
 
 
 class SingleDemoDataset(Dataset):
-    def __init__(self, dataset_csv_path, targets_csv_path, image_dir, n_history):
+    def __init__(self, dataset_csv_path, image_dir):
         self.dataset_df = pd.read_csv(dataset_csv_path)
-        self.targets_df = pd.read_csv(targets_csv_path)
         self.image_dir = Path(image_dir)
-        self.n_history = n_history
 
         self.augmentation = v2.Compose([
             v2.ToDtype(torch.float32, scale=True),
@@ -52,22 +49,20 @@ class SingleDemoDataset(Dataset):
         ])
 
     def __len__(self):
-        return len(self.targets_df)
+        return len(self.dataset_df)
     
     
     def __getitem__(self, index):
-        sample = self.targets_df.iloc[index]
-        current_idx = sample['current_idx']
-        target_idx = sample['target_idx']
+        target_idx = self.dataset_df.iloc[index]['target']
 
         image = torch.load(
             self.image_dir /
-            Path(self.dataset_df.iloc[current_idx]['image']).with_suffix('.pt')
+            Path(self.dataset_df.iloc[index]['image']).with_suffix('.pt')
         )
         image = self.augmentation(image)
 
         
-        current_pose = self.dataset_df.iloc[current_idx][POSE_GRIPPER_COLS].to_numpy(dtype=np.float32)
+        current_pose = self.dataset_df.iloc[index][POSE_GRIPPER_COLS].to_numpy(dtype=np.float32)
         target_pose = self.dataset_df.iloc[target_idx][POSE_GRIPPER_COLS].to_numpy(dtype=np.float32)
 
 
@@ -77,23 +72,22 @@ class SingleDemoDataset(Dataset):
 
         return {
             'image': image,
-            'history': current_pose,
+            'current_state': current_pose,
             'delta_position': torch.tensor(delta_position, dtype=torch.float32) * 100,
             'gripper_state': torch.tensor([gripper_state], dtype=torch.float32),
         }
     
 
-def load_dataset_from_yaml(config_path, n_history) -> ConcatDataset:
+def load_dataset_from_yaml(config_path) -> ConcatDataset:
     """Expects YAML format:
         
         demos:
             - dataset_csv: path1
-              targets_csv: targets_path1
               image_dir: image_path1
             - dataset_csv: path2
-              targets_csv: targets_path2
               image_dir: image_path2
     """
+
     with open(config_path) as f:
         config = yaml.safe_load(f)
     
@@ -106,9 +100,7 @@ def load_dataset_from_yaml(config_path, n_history) -> ConcatDataset:
     datasets = [
         SingleDemoDataset(
             dataset_csv_path=demo['dataset_csv'],
-            targets_csv_path=demo['targets_csv'],
-            image_dir=demo['image_dir'],
-            n_history=n_history
+            image_dir=demo['image_dir']
         )
         for demo in demos
     ]
@@ -120,10 +112,10 @@ def load_dataset_from_yaml(config_path, n_history) -> ConcatDataset:
 
 
 def train_and_save(
-        hidden_dim = 256,
-        lr = 0.0015
+        hidden_dim,
+        lr
 ):
-    dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
+    dataset = load_dataset_from_yaml(CONFIG_PATH)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f'Using {device}')
@@ -132,7 +124,7 @@ def train_and_save(
     train_loader = DataLoader(training_set, batch_size=64, shuffle=True, num_workers=12, pin_memory=True)
     validation_loader = DataLoader(validation_set, batch_size=64, shuffle=True, num_workers=12, pin_memory=True)
 
-    model = PolicyNetwork(n_history=N_HISTORY, hidden_dim=hidden_dim).to(device)
+    model = PolicyNetwork(hidden_dim=hidden_dim).to(device)
     loss_fn = PolicyNetworkLoss().to(device)
     optimizer = torch.optim.Adam(model.trainable_parameters(), lr=lr)
 
@@ -143,14 +135,14 @@ def train_and_save(
 
         for batch in train_loader:
             image = batch['image'].to(device)
-            history = batch['history'].to(device)
+            current_state = batch['current_state'].to(device)
             target = {
                 'delta_position': batch['delta_position'].to(device),
                 'gripper_state': batch['gripper_state'].to(device)
             }
 
             optimizer.zero_grad()
-            preds = model(image, history)
+            preds = model(image, current_state)
             losses = loss_fn(preds, target)
             losses['total'].backward()
             optimizer.step()
@@ -165,12 +157,12 @@ def train_and_save(
     with torch.no_grad():
         for batch in train_loader:
             image = batch['image'].to(device)
-            history = batch['history'].to(device)
+            current_state = batch['current_state'].to(device)
             target = {
                 'delta_position': batch['delta_position'].to(device),
                 'gripper_state': batch['gripper_state'].to(device)
             }
-            preds = model(image, history)
+            preds = model(image, current_state)
             losses = loss_fn(preds, target)
             final_training_losses.append(losses['total'].item())
         
@@ -185,12 +177,12 @@ def train_and_save(
     with torch.no_grad():
         for batch in validation_loader:
             image = batch['image'].to(device)
-            history = batch['history'].to(device)
+            current_state = batch['current_state'].to(device)
             target = {
                 'delta_position': batch['delta_position'].to(device),
                 'gripper_state': batch['gripper_state'].to(device)
             }
-            preds = model(image, history)
+            preds = model(image, current_state)
             losses = loss_fn(preds, target)
             val_losses.append(losses['total'].item())
         
@@ -211,7 +203,7 @@ def objective(trial: optuna.Trial) -> float:
     train_loader = DataLoader(training_set, batch_size=64, shuffle=True, num_workers=12, pin_memory=True)
     validation_loader = DataLoader(validation_set, batch_size=64, shuffle=True, num_workers=12, pin_memory=True)
 
-    model = PolicyNetwork(n_history=N_HISTORY, hidden_dim=hidden_dim).to(device)
+    model = PolicyNetwork(hidden_dim=hidden_dim).to(device)
     loss_fn = PolicyNetworkLoss().to(device)
     optimizer = torch.optim.Adam(model.trainable_parameters(), lr=learning_rate)
 
@@ -222,14 +214,14 @@ def objective(trial: optuna.Trial) -> float:
 
         for batch in train_loader:
             image = batch['image'].to(device)
-            history = batch['history'].to(device)
+            current_state = batch['current_state'].to(device)
             target = {
                 'delta_position': batch['delta_position'].to(device),
                 'gripper_state': batch['gripper_state'].to(device)
             }
 
             optimizer.zero_grad()
-            preds = model(image, history)
+            preds = model(image, current_state)
             losses = loss_fn(preds, target)
             losses['total'].backward()
             optimizer.step()
@@ -242,12 +234,12 @@ def objective(trial: optuna.Trial) -> float:
         with torch.no_grad():
             for batch in validation_loader:
                 image = batch['image'].to(device)
-                history = batch['history'].to(device)
+                current_state = batch['current_state'].to(device)
                 target = {
                     'delta_position': batch['delta_position'].to(device),
                     'gripper_state': batch['gripper_state'].to(device)
                 }
-                preds = model(image, history)
+                preds = model(image, current_state)
                 losses = loss_fn(preds, target)
                 val_losses.append(losses['total'].item())
 
@@ -308,5 +300,5 @@ if __name__ == '__main__':
 
 
     hidden_dim = 200
-    lr = 0.0018
+    lr = 0.0015
     train_and_save(hidden_dim, lr)

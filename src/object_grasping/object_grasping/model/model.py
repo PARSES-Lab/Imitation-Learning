@@ -4,10 +4,9 @@ from .spatial_softmax import SpatialSoftArgmax
 import torchvision.models as models
 
 class PolicyNetwork(nn.Module):
-    def __init__(self, n_history, hidden_dim):
+    def __init__(self, hidden_dim):
         super().__init__()
 
-        self.n_history = n_history
         self.hidden_dim = hidden_dim
 
         ## Resnet18 encoder
@@ -32,7 +31,7 @@ class PolicyNetwork(nn.Module):
 
         ## Feedforward layers
         encoder_output_dim = 512 * 2
-        ff_input_dim = encoder_output_dim + self.n_history * 4
+        ff_input_dim = encoder_output_dim + 4
 
         self.feedforward = nn.Sequential(
             nn.Linear(ff_input_dim, hidden_dim),

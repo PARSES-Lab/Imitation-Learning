@@ -22,7 +22,6 @@ MODEL_WEIGHTS_PATH = (
     "/home/parses/ros2_ws/src/object_grasping/object_grasping/Graspingv6.pth"
 )
 # MODEL_WEIGHTS_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth'
-N_HISTORY = 1  ## this script assumes history is just the latest state
 HIDDEN_DIM = 200
 
 # Gripper threshold — above this the network predicts close
@@ -100,7 +99,7 @@ class UR3Inference(Node):
             ]
         )
 
-        self.model = PolicyNetwork(n_history=N_HISTORY, hidden_dim=HIDDEN_DIM)
+        self.model = PolicyNetwork(hidden_dim=HIDDEN_DIM)
         self.model.eval()
         state_dict = torch.load(
             MODEL_WEIGHTS_PATH, weights_only=True, map_location=torch.device("cpu")
@@ -108,6 +107,7 @@ class UR3Inference(Node):
         self.model.load_state_dict(state_dict)
 
         self.get_logger().info("UR3Inference ready.")
+
 
     def _get_latest_state(self):
         joint_state = self._moveit2.joint_state
@@ -132,12 +132,8 @@ class UR3Inference(Node):
             fk_pose.pose.orientation.w,
         ]
 
-        latest_state = translation + rotation + [gripper]
-        return (
-            torch.tensor(latest_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-        )  # (1, 1, 8)
+        return translation + rotation + [gripper]
 
-    # ── Image ─────────────────────────────────────────────────────────────────
 
     def image_callback(self, msg: Image):
         np_img = np.frombuffer(msg.data, dtype=np.uint8).reshape(
@@ -183,8 +179,10 @@ class UR3Inference(Node):
                 self.get_logger().warn("Could not get latest state, trying again.")
                 continue
 
+            translation, rotation, gripper = current_state
+
             with torch.no_grad():
-                pred = self.model(image, current_state)
+                pred = self.model(image, torch.tensor(translation + [gripper], dtype=torch.float32).unsqueeze(0).unsqueeze(0))
 
             delta_position = pred["delta_position"][0].numpy() / 100  # (3,)
             gripper_logit = pred["gripper_state"][0].item()
@@ -194,15 +192,14 @@ class UR3Inference(Node):
                 else Gripper.OPEN
             )
 
-            current_position = current_state.squeeze()[0:3].numpy()
-            current_orientation = current_state.squeeze()[3:7].numpy()
+            current_position = np.array(translation)
 
             target_position = current_position + delta_position
 
             # Move arm
             move_success = self.move(
                 position=target_position.tolist(),
-                orientation=current_orientation.tolist(),
+                orientation=rotation,
             )
             if not move_success:
                 self.get_logger().error("Move failed, aborting.")
@@ -224,7 +221,6 @@ class UR3Inference(Node):
             #     self.get_logger().info('Task complete.')
             #     return True
 
-    # ── Motion ────────────────────────────────────────────────────────────────
 
     def move_gripper(self, action: Gripper) -> bool:
         if action == self.current_gripper_state:
