@@ -96,6 +96,10 @@ def load_dataset_from_yaml(config_path) -> ConcatDataset:
         raise ValueError(f'No demos found in {config_path}')
 
     print(f"Loading {len(demos)} demonstrations...")
+    print(f"Using demo {len(demos)} as a test set")
+
+    test_demo = demos[len(demos) - 1]
+    demos = demos[0:len(demos) - 1]
 
     datasets = [
         SingleDemoDataset(
@@ -105,24 +109,26 @@ def load_dataset_from_yaml(config_path) -> ConcatDataset:
         for demo in demos
     ]
 
+    test_set = SingleDemoDataset(dataset_csv_path=test_demo['dataset_csv'], image_dir=test_demo['image_dir'])
+
     combined = ConcatDataset(datasets)
-    print(f"Total samples across all demos: {len(combined)}")
-    return combined
+    print(f"Total samples across all demos (excluding test): {len(combined)}")
+    return combined, test_set
 
 
 
 def train_and_save(
         hidden_dim,
-        lr
+        lr,
+        weights_path
 ):
-    dataset = load_dataset_from_yaml(CONFIG_PATH)
+    dataset, test_set = load_dataset_from_yaml(CONFIG_PATH)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f'Using {device}')
 
-    training_set, validation_set = random_split(dataset, [0.85, 0.15])
-    train_loader = DataLoader(training_set, batch_size=64, shuffle=True, num_workers=12, pin_memory=True)
-    validation_loader = DataLoader(validation_set, batch_size=64, shuffle=True, num_workers=12, pin_memory=True)
+    train_loader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=12, pin_memory=True)
+    test_loader = DataLoader(test_set, batch_size=64, shuffle=True, num_workers=12, pin_memory=True)
 
     model = PolicyNetwork(hidden_dim=hidden_dim).to(device)
     loss_fn = PolicyNetworkLoss().to(device)
@@ -149,13 +155,14 @@ def train_and_save(
 
             train_losses.append(losses['total'].item())
         print(f'Epoch {epoch}: Loss is {np.mean(train_losses)}')
-    
-    ## Final training loss
+
+
+    ## Test loop
     model.eval()
-    final_training_losses = []
+    test_losses = []
 
     with torch.no_grad():
-        for batch in train_loader:
+        for batch in test_loader:
             image = batch['image'].to(device)
             current_state = batch['current_state'].to(device)
             target = {
@@ -164,32 +171,12 @@ def train_and_save(
             }
             preds = model(image, current_state)
             losses = loss_fn(preds, target)
-            final_training_losses.append(losses['total'].item())
+            test_losses.append(losses['total'].item())
         
-    final_training_loss = np.mean(final_training_losses)
-    print(f"Final training loss: {final_training_loss}")
+    test_loss = np.mean(test_losses)
+    print(f"Test loss: {test_loss}")
 
-
-    ## Validation loop
-    model.eval()
-    val_losses = []
-
-    with torch.no_grad():
-        for batch in validation_loader:
-            image = batch['image'].to(device)
-            current_state = batch['current_state'].to(device)
-            target = {
-                'delta_position': batch['delta_position'].to(device),
-                'gripper_state': batch['gripper_state'].to(device)
-            }
-            preds = model(image, current_state)
-            losses = loss_fn(preds, target)
-            val_losses.append(losses['total'].item())
-        
-    validation_loss = np.mean(val_losses)
-    print(f"Validation loss: {validation_loss}")
-
-    torch.save(model.state_dict(), '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv6.pth')
+    torch.save(model.state_dict(), weights_path)
 
 
 def objective(trial: optuna.Trial) -> float:
@@ -261,7 +248,7 @@ if __name__ == '__main__':
     #     study_name='imitation_learning'
     # )
 
-    # dataset = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
+    # dataset, test_set = load_dataset_from_yaml(CONFIG_PATH, N_HISTORY)
 
     # study.optimize(objective, n_trials=30, show_progress_bar=True)
 
@@ -296,9 +283,9 @@ if __name__ == '__main__':
     # fig_contour.write_html('plots/contour.html')
 
 
-    # train_and_save(trial.params['hidden_dim'], trial.params['lr'])
+    # train_and_save(trial.params['hidden_dim'], trial.params['lr'], '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/Graspingv7.pth')
 
 
     hidden_dim = 200
-    lr = 0.0015
-    train_and_save(hidden_dim, lr)
+    lr = 0.002
+    train_and_save(hidden_dim, lr, '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/Graspingv7.pth')
