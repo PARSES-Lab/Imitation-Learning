@@ -132,7 +132,7 @@ class UR3Inference(Node):
             fk_pose.pose.orientation.w,
         ]
 
-        return translation + rotation + [gripper]
+        return translation, rotation, gripper
 
 
     def image_callback(self, msg: Image):
@@ -191,10 +191,10 @@ class UR3Inference(Node):
                 if torch.sigmoid(torch.tensor(gripper_logit)) > GRIPPER_THRESHOLD
                 else Gripper.OPEN
             )
+            
+            translation = np.array(translation)
 
-            current_position = np.array(translation)
-
-            target_position = current_position + delta_position
+            target_position = translation + delta_position
 
             # Move arm
             move_success = self.move(
@@ -342,10 +342,10 @@ def main():
     node.add_obstacle("wall", size=[0.02, 2.00, 2.0], position=[0.15, 0.0, 0.0])
     node.add_obstacle("bar", size=[0.05, 0.05, 2.5], position=[0.1, -0.1, 0.0])
 
-    home_success = node.move_to_home()
-    if not home_success:
-        rclpy.shutdown()
-        return
+    # home_success = node.move_to_home()
+    # if not home_success:
+    #     rclpy.shutdown()
+    #     return
 
     node.run_task()
     rclpy.shutdown()
