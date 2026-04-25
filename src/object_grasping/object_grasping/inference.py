@@ -309,7 +309,7 @@ class UR3Inference(Node):
             -1.2355186,
             -1.8113027,
             1.5781267,
-            6.16153586,
+            -.1214749,
         ]
         self.get_logger().info("Moving to home position...")
         self._moveit2.move_to_configuration(
@@ -333,6 +333,7 @@ class UR3Inference(Node):
 
         ## Move randomly +-2 cm
         if add_random_variation:
+            self.get_logger().info("Adding random position noise.")
 
             while True:
                 current_state = self._get_latest_state()
@@ -343,10 +344,17 @@ class UR3Inference(Node):
                     break
             
             translation, rotation, gripper = current_state
-            random_motion = np.random.normal(0.0, 0.015, size=3)
+            random_motion = np.random.uniform(low=-0.01, high=0.01, size=3)
             translation = np.array(translation) + random_motion
 
-            self.move(translation.tolist(), rotation)
+            move_success = self.move(translation.tolist(), rotation)
+
+            if move_success:
+                self.get_logger().info("Successfully added noise to start position.")
+            else:
+                self.get_logger().info("Failed to add noise to start position")
+                return False
+
 
         return True
 
