@@ -141,5 +141,19 @@ if __name__ == "__main__":
 
         pair_images_and_poses(image_dir, poses_csv, dataset_csv)
         add_gripper_column(csv_path=dataset_csv, yaml_path=yaml_path)
+
+        df = pd.read_csv(dataset_csv)
+
+        # Find the first index where z < 0.39
+        cutoff_idx = df[df["z"] < 0.39].index.min()
+        print(cutoff_idx)
+
+        # If such a row exists, keep everything from that point onward
+        if pd.notna(cutoff_idx):
+            df = df.loc[cutoff_idx:]
+
+        # Save the result to a new CSV
+        df.to_csv(dataset_csv, index=False)
+        
         assign_targets(csv_path=dataset_csv)
         print("Saved final dataset")

@@ -182,7 +182,7 @@ class UR3Inference(Node):
             translation, rotation, gripper = current_state
 
             with torch.no_grad():
-                pred = self.model(image, torch.tensor(translation, dtype=torch.float32).unsqueeze(0).unsqueeze(0))
+                pred = self.model(image, torch.tensor(translation + [gripper], dtype=torch.float32).unsqueeze(0).unsqueeze(0))
 
             delta_position = pred["delta_position"][0].numpy() / 100  # (3,)
             gripper_logit = pred["gripper_state"][0].item()
