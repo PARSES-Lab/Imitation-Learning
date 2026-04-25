@@ -100,27 +100,27 @@ def assign_targets(
             continue
 
         # check if that state is meaningful
-        def is_meaningful(j):
-            pos = df.iloc[j][POSITION_COLS].to_numpy(dtype=np.float32)
-            gripper = df.iloc[j]["gripper"]
+        # def is_meaningful(j):
+        #     pos = df.iloc[j][POSITION_COLS].to_numpy(dtype=np.float32)
+        #     gripper = df.iloc[j]["gripper"]
 
-            return (
-                gripper != current_gripper
-                or np.linalg.norm(pos - current_pos) > position_threshold
-            )
+        #     return (
+        #         gripper != current_gripper
+        #         or np.linalg.norm(pos - current_pos) > position_threshold
+        #     )
 
-        # if not meaningful, skip forward
-        steps = 0
-        while target < len(df) - 1 and steps < max_lookahead:
-            if is_meaningful(target):
-                break
-            target += 1
-            steps += 1
+        # # if not meaningful, skip forward
+        # steps = 0
+        # while target < len(df) - 1 and steps < max_lookahead:
+        #     if is_meaningful(target):
+        #         break
+        #     target += 1
+        #     steps += 1
 
-        # if we failed to find anything meaningful, clamp to final index
-        if target >= len(df):
-            targets.append(len(df) - 1)
-            continue
+        # # if we failed to find anything meaningful, clamp to final index
+        # if target >= len(df):
+        #     targets.append(len(df) - 1)
+        #     continue
 
         targets.append(target)
 
@@ -141,19 +141,5 @@ if __name__ == "__main__":
 
         pair_images_and_poses(image_dir, poses_csv, dataset_csv)
         add_gripper_column(csv_path=dataset_csv, yaml_path=yaml_path)
-
-        df = pd.read_csv(dataset_csv)
-
-        # Find the first index where z < 0.39
-        cutoff_idx = df[df["z"] < 0.39].index.min()
-        print(cutoff_idx)
-
-        # If such a row exists, keep everything from that point onward
-        if pd.notna(cutoff_idx):
-            df = df.loc[cutoff_idx:]
-
-        # Save the result to a new CSV
-        df.to_csv(dataset_csv, index=False)
-        
         assign_targets(csv_path=dataset_csv)
         print("Saved final dataset")
