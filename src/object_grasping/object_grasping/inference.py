@@ -19,13 +19,13 @@ import threading
 from rclpy.callback_groups import ReentrantCallbackGroup
 
 MODEL_WEIGHTS_PATH = (
-    "/home/parses/ros2_ws/src/object_grasping/object_grasping/Graspingv6.pth"
+    "/home/parses/ros2_ws/src/object_grasping/object_grasping/trained_models/Graspingv7.pth"
 )
 # MODEL_WEIGHTS_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth'
 HIDDEN_DIM = 200
 
 # Gripper threshold — above this the network predicts close
-GRIPPER_THRESHOLD = 0.8
+GRIPPER_THRESHOLD = 0.75
 
 
 class Gripper(Enum):
