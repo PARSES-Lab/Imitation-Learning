@@ -62,8 +62,8 @@ class SingleDemoDataset(Dataset):
         image = self.augmentation(image)
 
         
-        current_pose = self.dataset_df.iloc[index][POSE_GRIPPER_COLS].to_numpy(dtype=np.float32)
-        target_pose = self.dataset_df.iloc[target_idx][POSE_GRIPPER_COLS].to_numpy(dtype=np.float32)
+        current_pose = self.dataset_df.iloc[index][POSE_COLS].to_numpy(dtype=np.float32)
+        target_pose = self.dataset_df.iloc[target_idx][POSE_COLS].to_numpy(dtype=np.float32)
 
 
         delta_position = target_pose[:3] - current_pose[:3]
@@ -288,4 +288,4 @@ if __name__ == '__main__':
 
     hidden_dim = 200
     lr = 0.002
-    train_and_save(hidden_dim, lr, '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/Graspingv7a.pth')
+    train_and_save(hidden_dim, lr, '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/Graspingv7c.pth')

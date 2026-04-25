@@ -31,7 +31,7 @@ class PolicyNetwork(nn.Module):
 
         ## Feedforward layers
         encoder_output_dim = 512 * 2
-        ff_input_dim = encoder_output_dim + 4
+        ff_input_dim = encoder_output_dim + 3
 
         self.feedforward = nn.Sequential(
             nn.Linear(ff_input_dim, hidden_dim),
