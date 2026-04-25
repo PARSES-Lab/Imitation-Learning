@@ -302,14 +302,14 @@ class UR3Inference(Node):
             + (translation[2] - target[2]) ** 2
         )
 
-    def move_to_home(self):
+    def move_to_home(self, add_random_variation=False):
         home_position = [
-            0.1464331,
-            -1.1904891,
-            -1.4117968,
-            -2.05215813,
-            1.5758578,
-            0.21868976,
+            -.1507964,
+            -1.6079718,
+            -1.2355186,
+            -1.8113027,
+            1.5781267,
+            6.16153586,
         ]
         self.get_logger().info("Moving to home position...")
         self._moveit2.move_to_configuration(
@@ -330,6 +330,24 @@ class UR3Inference(Node):
             return False
 
         self.get_logger().info("Home reached.")
+
+        ## Move randomly +-2 cm
+        if add_random_variation:
+
+            while True:
+                current_state = self._get_latest_state()
+                if current_state is None:
+                    self.get_logger().warn("Could not get latest state, trying again.")
+                    continue
+                else:
+                    break
+            
+            translation, rotation, gripper = current_state
+            random_motion = np.random.normal(0.0, 0.015, size=3)
+            translation = np.array(translation) + random_motion
+
+            self.move(translation.tolist(), rotation)
+
         return True
 
 
@@ -347,12 +365,12 @@ def main():
     node.add_obstacle("wall", size=[0.02, 2.00, 2.0], position=[0.15, 0.0, 0.0])
     node.add_obstacle("bar", size=[0.05, 0.05, 2.5], position=[0.1, -0.1, 0.0])
 
-    # home_success = node.move_to_home()
-    # if not home_success:
-    #     rclpy.shutdown()
-    #     return
+    home_success = node.move_to_home(add_random_variation=True)
+    if not home_success:
+        rclpy.shutdown()
+        return
 
-    node.run_task()
+    # node.run_task()
     rclpy.shutdown()
     executor_thread.join()
 
