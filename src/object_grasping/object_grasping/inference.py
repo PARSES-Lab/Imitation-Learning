@@ -21,11 +21,13 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 MODEL_WEIGHTS_PATH = (
     "/home/parses/ros2_ws/src/object_grasping/object_grasping/trained_models/Graspingv7.pth"
 )
-# MODEL_WEIGHTS_PATH = '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/Graspingv1.pth'
 HIDDEN_DIM = 200
 
-# Gripper threshold — above this the network predicts close
-GRIPPER_THRESHOLD = 0.75
+# Gripper close threshold — above this the network predicts close
+CLOSE_THRESHOLD = 0.75
+
+# Gripper open threshold - below this the network predicts open
+OPEN_THRESHOLD = 0.25
 
 
 class Gripper(Enum):
@@ -186,11 +188,14 @@ class UR3Inference(Node):
 
             delta_position = pred["delta_position"][0].numpy() / 100  # (3,)
             gripper_logit = pred["gripper_state"][0].item()
-            target_gripper = (
-                Gripper.CLOSE
-                if torch.sigmoid(torch.tensor(gripper_logit)) > GRIPPER_THRESHOLD
-                else Gripper.OPEN
-            )
+
+            ## Predict gripper state
+            if torch.sigmoid(torch.tensor(gripper_logit)) > CLOSE_THRESHOLD:
+                target_gripper = Gripper.CLOSE
+            elif torch.sigmoid(torch.tensor(gripper_logit)) < OPEN_THRESHOLD:
+                target_gripper = Gripper.OPEN
+            else:
+                target_gripper = self.current_gripper_state
             
             translation = np.array(translation)
 
