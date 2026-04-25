@@ -100,27 +100,27 @@ def assign_targets(
             continue
 
         # check if that state is meaningful
-        # def is_meaningful(j):
-        #     pos = df.iloc[j][POSITION_COLS].to_numpy(dtype=np.float32)
-        #     gripper = df.iloc[j]["gripper"]
+        def is_meaningful(j):
+            pos = df.iloc[j][POSITION_COLS].to_numpy(dtype=np.float32)
+            gripper = df.iloc[j]["gripper"]
 
-        #     return (
-        #         gripper != current_gripper
-        #         or np.linalg.norm(pos - current_pos) > position_threshold
-        #     )
+            return (
+                gripper != current_gripper
+                or np.linalg.norm(pos - current_pos) > position_threshold
+            )
 
-        # # if not meaningful, skip forward
-        # steps = 0
-        # while target < len(df) - 1 and steps < max_lookahead:
-        #     if is_meaningful(target):
-        #         break
-        #     target += 1
-        #     steps += 1
+        # if not meaningful, skip forward
+        steps = 0
+        while target < len(df) - 1 and steps < max_lookahead:
+            if is_meaningful(target):
+                break
+            target += 1
+            steps += 1
 
-        # # if we failed to find anything meaningful, clamp to final index
-        # if target >= len(df):
-        #     targets.append(len(df) - 1)
-        #     continue
+        # if we failed to find anything meaningful, clamp to final index
+        if target >= len(df):
+            targets.append(len(df) - 1)
+            continue
 
         targets.append(target)
 
