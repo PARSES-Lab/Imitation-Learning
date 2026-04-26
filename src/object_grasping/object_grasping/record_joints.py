@@ -1,28 +1,24 @@
 #!/usr/bin/env python3
 
+import argparse
+from datetime import datetime
+
 import rclpy
+import yaml
+from builtin_interfaces.msg import Duration
 from rclpy.node import Node
+from rosidl_runtime_py import message_to_yaml
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Int32MultiArray
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
-from builtin_interfaces.msg import Duration
-
-import yaml
-import argparse
-import signal
-import sys
-from datetime import datetime
-
-from rosidl_runtime_py import message_to_yaml
-
 
 UR_JOINTS = [
-    'shoulder_pan_joint',
-    'shoulder_lift_joint',
-    'elbow_joint',
-    'wrist_1_joint',
-    'wrist_2_joint',
-    'wrist_3_joint'
+    "shoulder_pan_joint",
+    "shoulder_lift_joint",
+    "elbow_joint",
+    "wrist_1_joint",
+    "wrist_2_joint",
+    "wrist_3_joint",
 ]
 
 GRIPPER_CLOSED_THRESHOLD = 3
@@ -30,7 +26,7 @@ GRIPPER_CLOSED_THRESHOLD = 3
 
 class JointRecorder(Node):
     def __init__(self, output_file):
-        super().__init__('joint_recorder')
+        super().__init__("joint_recorder")
 
         self.output_file = output_file
         self.start_time = None
@@ -44,20 +40,14 @@ class JointRecorder(Node):
         self.gripper_was_closed = False
 
         self.subscription = self.create_subscription(
-            JointState,
-            '/joint_states',
-            self.joint_state_callback,
-            10
+            JointState, "/joint_states", self.joint_state_callback, 10
         )
 
         self.gripper_subscription = self.create_subscription(
-            Int32MultiArray,
-            '/gripper/status',
-            self.gripper_status_callback,
-            10
+            Int32MultiArray, "/gripper/status", self.gripper_status_callback, 10
         )
 
-        self.get_logger().info('Recording... Ctrl-C to stop.')
+        self.get_logger().info("Recording... Ctrl-C to stop.")
 
     def joint_state_callback(self, msg):
         self.message_count += 1
@@ -79,8 +69,7 @@ class JointRecorder(Node):
 
         total_ns = int(elapsed * 1e9)
         point.time_from_start = Duration(
-            sec=total_ns // 1_000_000_000,
-            nanosec=total_ns % 1_000_000_000
+            sec=total_ns // 1_000_000_000, nanosec=total_ns % 1_000_000_000
         )
 
         self.trajectory.points.append(point)
@@ -93,39 +82,39 @@ class JointRecorder(Node):
         elapsed = (self.get_clock().now().nanoseconds - self.start_time) / 1e9
 
         if is_closed and not self.gripper_was_closed:
-            self.gripper_events.append({'time': elapsed, 'action': 'close'})
-            self.get_logger().info(f'Gripper closed at {elapsed:.3f}s')
+            self.gripper_events.append({"time": elapsed, "action": "close"})
+            self.get_logger().info(f"Gripper closed at {elapsed:.3f}s")
 
         elif not is_closed and self.gripper_was_closed:
-            self.gripper_events.append({'time': elapsed, 'action': 'open'})
-            self.get_logger().info(f'Gripper opened at {elapsed:.3f}s')
+            self.gripper_events.append({"time": elapsed, "action": "open"})
+            self.get_logger().info(f"Gripper opened at {elapsed:.3f}s")
 
         self.gripper_was_closed = is_closed
 
     def save(self):
         if not self.trajectory.points:
-            print('No data recorded.')
+            print("No data recorded.")
             return
 
         data = {
-            'recorded_at': datetime.now().isoformat(),
-            'trajectory': yaml.safe_load(message_to_yaml(self.trajectory)),
-            'gripper_events': self.gripper_events
+            "recorded_at": datetime.now().isoformat(),
+            "trajectory": yaml.safe_load(message_to_yaml(self.trajectory)),
+            "gripper_events": self.gripper_events,
         }
 
-        with open(self.output_file, 'w') as f:
+        with open(self.output_file, "w") as f:
             yaml.dump(data, f)
 
         print(
-            f'Saved {len(self.trajectory.points)} points '
-            f'and {len(self.gripper_events)} gripper events '
-            f'to {self.output_file}'
+            f"Saved {len(self.trajectory.points)} points "
+            f"and {len(self.gripper_events)} gripper events "
+            f"to {self.output_file}"
         )
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--output', '-o', default='demo.yaml')
+    parser.add_argument("--output", "-o", default="demo.yaml")
     args = parser.parse_args()
 
     rclpy.init()
@@ -134,12 +123,12 @@ def main():
     try:
         rclpy.spin(recorder)
     except KeyboardInterrupt:
-        print('Ctrl-C received, saving...')
+        print("Ctrl-C received, saving...")
     finally:
         recorder.save()
         recorder.destroy_node()
         rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -106,8 +106,7 @@ class JointReplayer(Node):
 
         send_goal_future = self._action_client.send_goal_async(goal)
         send_goal_future.add_done_callback(self.goal_response_callback)
-
-        self.start_time = self.get_clock().now()
+        
         self.create_timer(0.01, self.gripper_timer_callback)
 
     # --- Original callback for the full trajectory ---
@@ -117,6 +116,7 @@ class JointReplayer(Node):
             self.get_logger().error('Trajectory rejected')
             rclpy.shutdown()
             return
+        self.start_time = self.get_clock().now()  # ← move it here
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(lambda f: rclpy.shutdown())
 

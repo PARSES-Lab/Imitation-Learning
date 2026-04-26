@@ -6,25 +6,37 @@ from pymoveit2.robots import ur as robot
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
+from std_msgs.msg import Int32MultiArray
 
 from pymoveit2 import MoveIt2
 
 TEMP_FILE = "tmp_joint_states.csv"
-OUTPUT_FILE = "poses.csv"
+OUTPUT_FILE = "poses_and_gripper.csv"
+
+GRIPPER_CLOSED_THRESHOLD = 3
 
 
 class JointStateCollector(Node):
-    """Subcribes to joint_states ros2 topic and saves with timestamps to temporary csv."""
+    """Subscribes to joint_states and gripper_status ros2 topics and saves with timestamps to temporary csv."""
 
     def __init__(self):
         super().__init__("joint_state_collector")
         self.sub = self.create_subscription(
             JointState, "/joint_states", self.callback, 10
         )
+        self.gripper_sub = self.create_subscription(
+            Int32MultiArray, "/gripper/status", self.gripper_callback, 10
+        )
         self.csv_file = open(TEMP_FILE, "w", newline="")
         self.writer = csv.writer(self.csv_file)
-        self.writer.writerow(["timestamp"] + robot.joint_names())
+        self.writer.writerow(["timestamp"] + robot.joint_names() + ["gripper"])
         self.count = 0
+        self.gripper_state = 0  # 0 = open, 1 = closed
+
+    def gripper_callback(self, msg: Int32MultiArray):
+        if len(msg.data) < 2:
+            return
+        self.gripper_state = 1 if msg.data[1] > GRIPPER_CLOSED_THRESHOLD else 0
 
     def callback(self, msg: JointState):
         name_to_pos = dict(zip(msg.name, msg.position))
@@ -32,7 +44,7 @@ class JointStateCollector(Node):
             return
         positions = [name_to_pos[n] for n in robot.joint_names()]
         ts = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-        self.writer.writerow([f"{ts:.6f}"] + positions)
+        self.writer.writerow([f"{ts:.6f}"] + positions + [self.gripper_state])
         self.count += 1
 
     def close(self):
@@ -41,7 +53,7 @@ class JointStateCollector(Node):
 
 
 class FKProcessor(Node):
-    """Converts joint positions in cvs format to end effector positions and saves to csv."""
+    """Converts joint positions in csv format to end effector positions and saves to csv."""
 
     def __init__(self):
         super().__init__("fk_processor")
@@ -68,7 +80,7 @@ class FKProcessor(Node):
         ):
             reader = csv.DictReader(infile)
             writer = csv.writer(outfile)
-            writer.writerow(["timestamp", "x", "y", "z", "qx", "qy", "qz", "qw"])
+            writer.writerow(["timestamp", "x", "y", "z", "qx", "qy", "qz", "qw", "gripper"])
 
             rows = list(reader)
             self.get_logger().info(f"Processing {len(rows)} joint states...")
@@ -80,7 +92,7 @@ class FKProcessor(Node):
                     t = fk_pose.pose.position
                     r = fk_pose.pose.orientation
                     writer.writerow(
-                        [row["timestamp"], t.x, t.y, t.z, r.x, r.y, r.z, r.w]
+                        [row["timestamp"], t.x, t.y, t.z, r.x, r.y, r.z, r.w, row["gripper"]]
                     )
                 else:
                     self.get_logger().warn(f"FK returned None for row {i}")
