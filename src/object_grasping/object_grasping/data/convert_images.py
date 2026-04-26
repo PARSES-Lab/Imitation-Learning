@@ -39,4 +39,4 @@ if __name__ == "__main__":
     parser.add_argument("directory")
     args = parser.parse_args()
 
-    convert_images(parser.directory)
+    convert_images(args.directory)

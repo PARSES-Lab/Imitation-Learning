@@ -1,5 +1,6 @@
 import csv
 from threading import Thread
+import time
 
 import rclpy
 from pymoveit2.robots import ur as robot
@@ -68,12 +69,31 @@ class FKProcessor(Node):
             callback_group=cb_group,
         )
 
-        executor = rclpy.executors.MultiThreadedExecutor(12)
-        executor.add_node(self)
-        self._executor_thread = Thread(target=executor.spin, daemon=True)
+        self._executor = rclpy.executors.MultiThreadedExecutor(12)
+        self._executor.add_node(self)
+        self._executor_thread = Thread(target=self._executor.spin, daemon=True)
         self._executor_thread.start()
 
-    def process(self):
+    def _reinit_moveit(self):
+        self._executor.shutdown()
+        self._executor_thread.join()
+
+        cb_group = ReentrantCallbackGroup()
+        self._moveit2 = MoveIt2(
+            node=self,
+            joint_names=robot.joint_names(),
+            base_link_name=robot.base_link_name(),
+            end_effector_name=robot.end_effector_name(),
+            group_name=robot.MOVE_GROUP_ARM,
+            callback_group=cb_group,
+        )
+
+        self._executor = rclpy.executors.MultiThreadedExecutor(12)
+        self._executor.add_node(self)
+        self._executor_thread = Thread(target=self._executor.spin, daemon=True)
+        self._executor_thread.start()
+
+    def process(self, reinit_every: int = 200, downsample: int = 2):
         with (
             open(TEMP_FILE, "r") as infile,
             open(OUTPUT_FILE, "w", newline="") as outfile,
@@ -83,11 +103,17 @@ class FKProcessor(Node):
             writer.writerow(["timestamp", "x", "y", "z", "qx", "qy", "qz", "qw", "gripper"])
 
             rows = list(reader)
+            rows = rows[::downsample]
             self.get_logger().info(f"Processing {len(rows)} joint states...")
 
             for i, row in enumerate(rows):
+                if i % reinit_every == 0 and i > 0:
+                    self.get_logger().info(f"Reinitializing executor at row {i}...")
+                    self._reinit_moveit()
+
                 positions = [float(row[n]) for n in robot.joint_names()]
                 fk_pose = self._moveit2.compute_fk(positions)
+                time.sleep(0.1)
                 if fk_pose is not None:
                     t = fk_pose.pose.position
                     r = fk_pose.pose.orientation
@@ -98,7 +124,7 @@ class FKProcessor(Node):
                     self.get_logger().warn(f"FK returned None for row {i}")
 
                 if i % 100 == 0:
-                    self.get_logger().info(f"Wrote to row {i}")
+                    self.get_logger().info(f"Processed {i}/{len(rows)}")
 
             self.get_logger().info(f"Wrote poses to {OUTPUT_FILE}")
 
