@@ -81,39 +81,52 @@ class SingleDemoDataset(Dataset):
 def load_dataset_from_yaml(config_path) -> ConcatDataset:
     """Expects YAML format:
         
-        demos:
+        training_demos:
             - dataset_csv: path1
               image_dir: image_path1
             - dataset_csv: path2
               image_dir: image_path2
+        
+        validation_demos:
+            - dataset_csv: path1
+              image_dir: image_path1
     """
 
     with open(config_path) as f:
         config = yaml.safe_load(f)
     
-    demos = config.get('demos', [])
-    if not demos:
-        raise ValueError(f'No demos found in {config_path}')
+    training_demos = config.get('training_demos', [])
+    if not training_demos:
+        raise ValueError(f'No training demos found in {config_path}')
+    
+    validation_demos = config.get('validation_demos', [])
+    if not validation_demos:
+        raise ValueError(f'No validation demos found in {config_path}')
 
-    print(f"Loading {len(demos)} demonstrations...")
-    print(f"Using demo {len(demos)} as a test set")
+    print(f"Loading {len(training_demos) + len(validation_demos)} demonstrations...")
 
-    test_demo = demos[len(demos) - 1]
-    demos = demos[0:len(demos) - 1]
-
-    datasets = [
+    training_datasets = [
         SingleDemoDataset(
             dataset_csv_path=demo['dataset_csv'],
             image_dir=demo['image_dir']
         )
-        for demo in demos
+        for demo in training_demos
     ]
 
-    test_set = SingleDemoDataset(dataset_csv_path=test_demo['dataset_csv'], image_dir=test_demo['image_dir'])
+    validation_datasets = [
+        SingleDemoDataset(
+            dataset_csv_path=demo['dataset_csv'],
+            image_dir=demo['image_dir']
+        )
+        for demo in validation_demos
+    ]
 
-    combined = ConcatDataset(datasets)
-    print(f"Total samples across all demos (excluding test): {len(combined)}")
-    return combined, test_set
+
+    training_set = ConcatDataset(training_datasets)
+    validation_set = ConcatDataset(validation_datasets)
+
+    print(f"Total samples across all demos: {len(training_set) + len(validation_set)}")
+    return training_set, validation_set
 
 
 
@@ -122,13 +135,13 @@ def train_and_save(
         lr,
         weights_path
 ):
-    dataset, test_set = load_dataset_from_yaml(CONFIG_PATH)
+    dataset, validation_set = load_dataset_from_yaml(CONFIG_PATH)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f'Using {device}')
 
     train_loader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=12, pin_memory=True)
-    test_loader = DataLoader(test_set, batch_size=64, shuffle=True, num_workers=12, pin_memory=True)
+    test_loader = DataLoader(validation_set, batch_size=64, shuffle=True, num_workers=12, pin_memory=True)
 
     model = PolicyNetwork(hidden_dim=hidden_dim).to(device)
     loss_fn = PolicyNetworkLoss().to(device)
@@ -286,6 +299,6 @@ if __name__ == '__main__':
     # train_and_save(trial.params['hidden_dim'], trial.params['lr'], '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/Graspingv7.pth')
 
 
-    hidden_dim = 200
+    hidden_dim = 250
     lr = 0.002
-    train_and_save(hidden_dim, lr, '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/Graspingv7d.pth')
+    train_and_save(hidden_dim, lr, '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/pick_and_place_v1.pth')

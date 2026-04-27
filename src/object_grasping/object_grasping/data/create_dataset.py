@@ -84,8 +84,8 @@ def assign_targets(
 
 
 if __name__ == "__main__":
-    # for i in range(1, 20):
-        demo_num = 1
+    for i in range(1, 33):
+        demo_num = i
         poses_csv = f"/home/joeya/pick_and_place_dataset/demo{demo_num}/poses_and_gripper.csv"
         dataset_csv = f"/home/joeya/pick_and_place_dataset/demo{demo_num}/dataset.csv"
         image_dir = f"/home/joeya/pick_and_place_dataset/demo{demo_num}"
