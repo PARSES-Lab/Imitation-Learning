@@ -113,7 +113,7 @@ class FKProcessor(Node):
 
                 positions = [float(row[n]) for n in robot.joint_names()]
                 fk_pose = self._moveit2.compute_fk(positions)
-                time.sleep(0.1)
+                time.sleep(0.4)
                 if fk_pose is not None:
                     t = fk_pose.pose.position
                     r = fk_pose.pose.orientation

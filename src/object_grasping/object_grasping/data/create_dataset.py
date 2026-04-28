@@ -29,7 +29,7 @@ def pair_images_and_poses(image_dir, poses_csv, dataset_csv):
 
 def assign_targets(
     csv_path,
-    delta_t: float = 0.5,
+    delta_t: float = 1.0,
     position_threshold=0.001,
     max_lookahead=50,
 ) -> None:
@@ -84,7 +84,7 @@ def assign_targets(
 
 
 if __name__ == "__main__":
-    for i in range(1, 33):
+    for i in range(1, 49):
         demo_num = i
         poses_csv = f"/home/joeya/pick_and_place_dataset/demo{demo_num}/poses_and_gripper.csv"
         dataset_csv = f"/home/joeya/pick_and_place_dataset/demo{demo_num}/dataset.csv"

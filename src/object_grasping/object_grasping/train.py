@@ -299,6 +299,6 @@ if __name__ == '__main__':
     # train_and_save(trial.params['hidden_dim'], trial.params['lr'], '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/Graspingv7.pth')
 
 
-    hidden_dim = 300
+    hidden_dim = 250
     lr = 0.002
-    train_and_save(hidden_dim, lr, '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/pick_and_place_v1c.pth')
+    train_and_save(hidden_dim, lr, '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/pick_and_place_v1e.pth')
