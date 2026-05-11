@@ -29,7 +29,7 @@ def pair_images_and_poses(image_dir, poses_csv, dataset_csv):
 
 def assign_targets(
     csv_path,
-    delta_t: float = 1.0,
+    delta_t: float = 0.5,
     position_threshold=0.001,
     max_lookahead=50,
 ) -> None:

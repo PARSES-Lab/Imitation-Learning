@@ -15,7 +15,7 @@ from optuna.trial import TrialState
 POSE_COLS = ['x', 'y', 'z']
 POSE_GRIPPER_COLS = ['x', 'y', 'z', 'gripper']
 CONFIG_PATH='/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/dataset_config.yaml'
-EPOCHS = 40
+EPOCHS = 35
 
 dataset = None
 
@@ -48,6 +48,7 @@ class SingleDemoDataset(Dataset):
             )
         ])
 
+
     def __len__(self):
         return len(self.dataset_df)
     
@@ -61,20 +62,22 @@ class SingleDemoDataset(Dataset):
         )
         image = self.augmentation(image)
 
-        
         current_pose = self.dataset_df.iloc[index][POSE_GRIPPER_COLS].to_numpy(dtype=np.float32)
-        target_pose = self.dataset_df.iloc[target_idx][POSE_GRIPPER_COLS].to_numpy(dtype=np.float32)
-
+        target_pose  = self.dataset_df.iloc[target_idx][POSE_GRIPPER_COLS].to_numpy(dtype=np.float32)
 
         delta_position = target_pose[:3] - current_pose[:3]
 
-        gripper_state = float(self.dataset_df.iloc[target_idx]['gripper'])
+        # --- NEW: delta gripper ---
+        current_gripper = int(current_pose[-1])   # last column is gripper
+        target_gripper  = int(target_pose[-1])
+
+        gripper_delta = float(current_gripper != target_gripper)  # 0 = keep, 1 = change
 
         return {
             'image': image,
             'current_state': current_pose,
             'delta_position': torch.tensor(delta_position, dtype=torch.float32) * 100,
-            'gripper_state': torch.tensor([gripper_state], dtype=torch.float32),
+            'gripper_state': torch.tensor([gripper_delta], dtype=torch.float32),
         }
     
 
@@ -301,4 +304,4 @@ if __name__ == '__main__':
 
     hidden_dim = 250
     lr = 0.002
-    train_and_save(hidden_dim, lr, '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/pick_and_place_v1e.pth')
+    train_and_save(hidden_dim, lr, '/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/pick_and_place_v1f.pth')

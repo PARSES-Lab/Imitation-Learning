@@ -70,7 +70,7 @@ class PolicyNetworkLoss(nn.Module):
         self.position_weight = position_weight
         self.gripper_weight = gripper_weight
         self.huber_loss = nn.HuberLoss()
-        self.bce = nn.BCEWithLogitsLoss()
+        self.bce = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([6]))
 
     def forward(
             self,

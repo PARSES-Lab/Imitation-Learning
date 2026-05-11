@@ -3,7 +3,7 @@ from model.model import PolicyNetwork, PolicyNetworkLoss
 from torch.utils.data import DataLoader
 from train import load_dataset_from_yaml
 
-HIDDEN_DIM = 200
+HIDDEN_DIM = 250
 MODEL_WEIGHTS_PATH = (
     "/home/joeya/Imitation-Learning/src/object_grasping/object_grasping/trained_models/pick_and_place_v1.pth"
 )
@@ -15,6 +15,18 @@ model.load_state_dict(state_dict)
 
 training_dataset, validation_dataset = load_dataset_from_yaml(CONFIG_PATH)
 validation_loader = DataLoader(training_dataset, shuffle=True)
+training_loader = DataLoader(training_dataset, shuffle=True)
+
+num_delta_gripper = 0
+total = 0
+for batch in training_loader:
+    total+=1
+    if batch['gripper_state'] == 1:
+        num_delta_gripper+=1
+
+print(num_delta_gripper)
+print(total)
+print(f"Ratio: {num_delta_gripper / total}")
 
 loss_fn = PolicyNetworkLoss()
 
