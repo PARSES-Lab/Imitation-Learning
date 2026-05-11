@@ -19,12 +19,12 @@ import threading
 from rclpy.callback_groups import ReentrantCallbackGroup
 
 MODEL_WEIGHTS_PATH = (
-    "/home/parses/ros2_ws/src/object_grasping/object_grasping/trained_models/Graspingv7.pth"
+    "/home/parses/ros2_ws/src/object_grasping/object_grasping/trained_models/pick_and_place_v1a.pth"
 )
-HIDDEN_DIM = 200
+HIDDEN_DIM = 250
 
 # Gripper close threshold — above this the network predicts close
-CLOSE_THRESHOLD = 0.75
+CLOSE_THRESHOLD = 0.6
 
 # Gripper open threshold - below this the network predicts open
 OPEN_THRESHOLD = 0.25
@@ -373,12 +373,12 @@ def main():
     node.add_obstacle("wall", size=[0.02, 2.00, 2.0], position=[0.15, 0.0, 0.0])
     node.add_obstacle("bar", size=[0.05, 0.05, 2.5], position=[0.1, -0.1, 0.0])
 
-    home_success = node.move_to_home(add_random_variation=True)
-    if not home_success:
-        rclpy.shutdown()
-        return
+    # home_success = node.move_to_home(add_random_variation=False)
+    # if not home_success:
+    #     rclpy.shutdown()
+    #     return
 
-    # node.run_task()
+    node.run_task()
     rclpy.shutdown()
     executor_thread.join()
 
